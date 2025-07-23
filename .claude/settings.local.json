@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm start)",
+      "Bash(npm install:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(taskkill:*)",
+      "Bash(winget install:*)",
+      "Bash(choco install:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(gh:*)",
+      "Bash(where gh)",
+      "Bash(dir:*)",
+      "Bash(\"C:\\Program Files\\GitHub CLI\\gh.exe\" --version)",
+      "Bash(\"C:\\Program Files\\GitHub CLI\\gh.exe\" auth login)",
+      "Bash(\"C:\\Program Files\\GitHub CLI\\gh.exe\" repo create wikibot-kakao --public --description \"KakaoTalk chatbot integrated with LOD Wiki search system via n8n workflows\" --source=. --push)",
+      "Bash(git init:*)"
+    ],
+    "deny": []
+  }
+}
