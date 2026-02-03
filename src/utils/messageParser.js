@@ -1,9 +1,6 @@
 class MessageParser {
   constructor() {
-    this.supportedCommands = [
-      '!검색', '!질문', '!확률', '!도움말', 
-      '!통계', '!연결테스트', '!캐시클리어'
-    ];
+    this.supportedCommands = ['!검색', '!통계', '!도움말'];
   }
 
   parse(message) {
@@ -17,7 +14,7 @@ class MessageParser {
     }
 
     const trimmedMessage = message.trim();
-    
+
     if (!trimmedMessage.startsWith('!')) {
       return {
         isCommand: false,

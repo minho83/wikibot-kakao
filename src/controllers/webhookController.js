@@ -1,26 +1,41 @@
 const express = require('express');
 const { MessageParser } = require('../utils/messageParser');
-const { WikiService } = require('../services/wikiService');
+const { SearchService } = require('../services/searchService');
 const { ResponseFormatter } = require('../utils/responseFormatter');
 
 const router = express.Router();
 const messageParser = new MessageParser();
-const wikiService = new WikiService();
+const searchService = new SearchService();
 const responseFormatter = new ResponseFormatter();
+
+// 서버 시작 시 검색 인덱스 초기화
+let initialized = false;
+const initializeService = async () => {
+  if (!initialized) {
+    await searchService.initialize();
+    initialized = true;
+  }
+};
+initializeService().catch(console.error);
 
 router.post('/kakao', async (req, res) => {
   try {
+    // 초기화 대기
+    if (!initialized) {
+      await initializeService();
+    }
+
     const { message, user_id, room_id } = req.body;
-    
-    if (!message || !user_id || !room_id) {
+
+    if (!message) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: message, user_id, room_id'
+        error: 'Missing required field: message'
       });
     }
 
     const parsedMessage = messageParser.parse(message);
-    
+
     if (!parsedMessage.isCommand) {
       return res.json({
         success: true,
@@ -30,25 +45,17 @@ router.post('/kakao', async (req, res) => {
     }
 
     let result;
-    
+
     switch (parsedMessage.command) {
       case '!검색':
-        result = await wikiService.search(parsedMessage.query, user_id, room_id);
-        break;
-      case '!질문':
-        result = await wikiService.question(parsedMessage.query, user_id, room_id);
-        break;
-      case '!확률':
-        result = await wikiService.getProbability(parsedMessage.query, user_id, room_id);
+        if (!parsedMessage.query) {
+          result = { success: false, message: '검색어를 입력해주세요.\n예: !검색 메테오' };
+        } else {
+          result = searchService.search(parsedMessage.query);
+        }
         break;
       case '!통계':
-        result = await wikiService.getStats();
-        break;
-      case '!연결테스트':
-        result = await wikiService.healthCheck();
-        break;
-      case '!캐시클리어':
-        result = await wikiService.clearCache();
+        result = searchService.getStats();
         break;
       case '!도움말':
         result = responseFormatter.getHelpMessage();
@@ -56,12 +63,12 @@ router.post('/kakao', async (req, res) => {
       default:
         result = {
           success: false,
-          message: `알 수 없는 명령어: ${parsedMessage.command}\\n!도움말을 입력하여 사용법을 확인하세요.`
+          message: `알 수 없는 명령어: ${parsedMessage.command}\n!도움말을 입력하여 사용법을 확인하세요.`
         };
     }
 
     const formattedResponse = responseFormatter.format(result);
-    
+
     res.json({
       success: true,
       message: formattedResponse.message,
