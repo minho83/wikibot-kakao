@@ -1,0 +1,97 @@
+# 작업 상세 계획서 (Detailed Work Plan)
+
+## 1. 개요
+
+LOD(어둠의전설) 게임 게시판에서 특정 키워드로 검색하고, 검색된 게시글의 내용을 파싱하여 챗봇 응답으로 제공하는 기능을 구현합니다.
+
+## 2. 사전 준비
+
+- **의존성 패키지 설치**:
+  - `axios`: HTTP 클라이언트
+  - `cheerio`: HTML 파싱
+
+  ```bash
+  npm install axios cheerio
+  ```
+
+## 3. 구현 상세
+
+### 3.1. 서비스 레이어 (`src/services/communityService.js`)
+
+새로운 서비스를 생성하여 외부 사이트와의 통신 및 파싱을 담당합니다.
+
+#### 주요 상수
+
+- **BASE_URL**: `https://lod.nexon.com`
+- **SEARCH_PATH**: `/Community/game`
+- **SEARCH_PARAMS**:
+  - `searchBoard`: `1`
+  - `category2`: `1` (세오 서버 등, 전체 검색 필요 시 조정 가능)
+  - `searchType`: `0` (제목 검색)
+  - `searchKeyword`: `[사용자 입력 키워드]`
+
+#### 기능 명세
+
+1. **`search(keyword)` 함수**
+    - **요청**: `GET ${BASE_URL}${SEARCH_PATH}` (쿼리 파라미터 포함)
+    - **파싱**:
+        - Selector: `.community_s1 li`
+        - 항목 추출:
+            - 제목: `.tit` 텍스트
+            - 링크: `a` 태그의 `href` (상세 페이지 접근용)
+            - 날짜: `.time` 텍스트
+    - **반환**: 검색 결과 리스트 (제목, 링크, 날짜 등)
+
+2. **`getPostDetail(url)` 함수**
+    - **요청**: `GET ${BASE_URL}${url}`
+    - **파싱**:
+        - 본문 Selector: `.board_text`
+    - **정제**: `cheerio`의 `.text()`를 사용하여 HTML 태그 제거 및 공백 정리.
+    - **반환**: 본문 텍스트
+
+3. **`searchAndParse(keyword)` 함수 (메인 진입점)**
+    - `search(keyword)` 호출.
+    - 결과가 있으면 첫 번째 (혹은 사용자가 선택한) 게시글의 링크로 `getPostDetail` 호출.
+    - 최종적으로 제목, 날짜, 본문 내용을 포함한 객체 반환.
+
+### 3.2. 컨트롤러 레이어 (`src/controllers/webhookController.js`)
+
+기존 웹훅 처리 로직에 새로운 명령어를 추가합니다.
+
+- **명령어**: `!게시판 [검색어]`
+- **로직**:
+    1. `!게시판` 명령 감지.
+    2.`CommunityService.searchAndParse(검색어)` 호출.
+    2. 결과 응답 생성.
+        - 성공 시: 게시글 제목, 작성일, 요약된 본문 출력.
+        - 실패/결과 없음 시: "검색 결과가 없습니다." 메시지 출력.
+
+## 4. 검증 계획 (Verification)
+
+1. **단위 테스트**: `test/communityTest.js` 스크립트를 작성하여 실제 데이터를 잘 가져오는지 콘솔 출력으로 확인.
+2. **통합 테스트**: 로컬 서버 구동 후 카카오톡 메시지 시뮬레이션(Postman 등)을 통해 `!게시판 발록` 입력 시 정상 응답 확인.
+
+## 5. 참고 사항 (HTML 구조 분석 결과)
+
+- **검색 리스트**:
+
+  ```html
+  <ul class="community_s1">
+    <li>
+      <a href="/Community/game/7755...">
+        <span class="tit">...</span>
+      </a>
+      <span class="time">2025.06.26</span>
+    </li>
+  </ul>
+  ```
+
+- **상세 페이지**:
+
+  ```html
+  <div class="board_text">
+    <div style="...">
+      <p>본문 내용...</p>
+    </div>
+  </div>
+  ```

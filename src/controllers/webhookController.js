@@ -1,11 +1,13 @@
 const express = require('express');
 const { MessageParser } = require('../utils/messageParser');
 const { SearchService } = require('../services/searchService');
+const { CommunityService } = require('../services/communityService');
 const { ResponseFormatter } = require('../utils/responseFormatter');
 
 const router = express.Router();
 const messageParser = new MessageParser();
 const searchService = new SearchService();
+const communityService = new CommunityService();
 const responseFormatter = new ResponseFormatter();
 
 // 서버 시작 시 검색 인덱스 초기화
@@ -56,6 +58,27 @@ router.post('/kakao', async (req, res) => {
         break;
       case '!통계':
         result = searchService.getStats();
+        break;
+      case '!게시판':
+      case '!커뮤니티':
+        if (!parsedMessage.query) {
+          result = { success: false, message: '검색어를 입력해주세요.\n예: !게시판 발록' };
+        } else {
+          try {
+            const commResult = await communityService.searchAndParse(parsedMessage.query);
+            if (commResult.success) {
+              // Custom format for community result
+              result = {
+                success: true,
+                message: `[${commResult.data.date}] ${commResult.data.title}\n${commResult.data.link}\n\n${commResult.data.content}`
+              };
+            } else {
+              result = commResult;
+            }
+          } catch (e) {
+            result = { success: false, message: '게시판 검색 중 오류가 발생했습니다.' };
+          }
+        }
         break;
       case '!도움말':
         result = responseFormatter.getHelpMessage();
