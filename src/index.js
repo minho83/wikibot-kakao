@@ -25,6 +25,28 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// 숫자를 한글 단위로 변환 (예: 150000000 → "1억 5,000만")
+function formatGold(num) {
+  if (!num || num === 0) return '0';
+
+  const units = ['', '만', '억', '조'];
+  const parts = [];
+  let remaining = num;
+  let unitIndex = 0;
+
+  while (remaining > 0 && unitIndex < units.length) {
+    const part = remaining % 10000;
+    if (part > 0) {
+      const formatted = part.toLocaleString('ko-KR');
+      parts.unshift(formatted + units[unitIndex]);
+    }
+    remaining = Math.floor(remaining / 10000);
+    unitIndex++;
+  }
+
+  return parts.join(' ') || '0';
+}
+
 // RAG 호환 /ask 엔드포인트 (rateLimiter 없이)
 app.post('/ask', async (req, res) => {
   try {
@@ -57,9 +79,9 @@ app.post('/ask', async (req, res) => {
 
         // 마법 정보
         if (item.category === 'spell') {
-          if (item.costMana) answer += `   MP소모: ${item.costMana}`;
+          if (item.costMana) answer += `   MP소모: ${item.costMana.toLocaleString('ko-KR')}`;
           if (item.needLevel) answer += ` | 습득레벨: ${item.needLevel}`;
-          if (item.needGold) answer += ` | 비용: ${item.needGold}G`;
+          if (item.needGold) answer += ` | 비용: ${formatGold(item.needGold)}G`;
           answer += '\n';
           // 스탯 요구사항
           const stats = [];
@@ -75,7 +97,7 @@ app.post('/ask', async (req, res) => {
         // 기술 정보
         if (item.category === 'skill') {
           if (item.needLevel) answer += `   습득레벨: ${item.needLevel}`;
-          if (item.needGold) answer += ` | 비용: ${item.needGold}G`;
+          if (item.needGold) answer += ` | 비용: ${formatGold(item.needGold)}G`;
           answer += '\n';
           const stats = [];
           if (item.needStr) stats.push(`힘${item.needStr}`);
