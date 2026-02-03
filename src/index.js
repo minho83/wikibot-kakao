@@ -37,8 +37,8 @@ app.post('/ask', async (req, res) => {
 
     const result = searchService.search(query);
 
-    if (result.success && result.data) {
-      const items = result.data.slice(0, 3);
+    if (result.success && result.results && result.results.length > 0) {
+      const items = result.results.slice(0, 3);
       let answer = '';
       const sources = [];
 
