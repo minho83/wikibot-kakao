@@ -21,7 +21,10 @@
       "Bash(sqlite3:*)",
       "Bash(python:*)",
       "Bash(chcp:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "mcp__github__get_file_contents",
+      "Bash(ssh user@192.168.0.80 \"docker ps -a | grep iris\")",
+      "Bash(ssh:*)"
     ],
     "deny": []
   }
