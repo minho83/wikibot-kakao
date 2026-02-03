@@ -15,7 +15,13 @@
       "Bash(\"C:\\Program Files\\GitHub CLI\\gh.exe\" --version)",
       "Bash(\"C:\\Program Files\\GitHub CLI\\gh.exe\" auth login)",
       "Bash(\"C:\\Program Files\\GitHub CLI\\gh.exe\" repo create wikibot-kakao --public --description \"KakaoTalk chatbot integrated with LOD Wiki search system via n8n workflows\" --source=. --push)",
-      "Bash(git init:*)"
+      "Bash(git init:*)",
+      "Bash(git -C \"D:\\\\AutoTool\\\\wikibot-kakao\" remote -v)",
+      "Bash(powershell -c \"\\(Get-Content ''D:\\\\AutoTool\\\\wikibot-kakao\\\\LOD_DB\\\\items.json'' | Measure-Object -Line\\).Lines; \\(Get-Content ''D:\\\\AutoTool\\\\wikibot-kakao\\\\LOD_DB\\\\skills.json'' | Measure-Object -Line\\).Lines; \\(Get-Content ''D:\\\\AutoTool\\\\wikibot-kakao\\\\LOD_DB\\\\spells.json'' | Measure-Object -Line\\).Lines\")",
+      "Bash(sqlite3:*)",
+      "Bash(python:*)",
+      "Bash(chcp:*)",
+      "Bash(git push:*)"
     ],
     "deny": []
   }
