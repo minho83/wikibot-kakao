@@ -43,9 +43,10 @@ app.post('/ask', async (req, res) => {
       const sources = [];
 
       items.forEach((item, idx) => {
-        answer += `${idx + 1}. ${item.title}\n`;
+        const title = item.displayName || item.name || '제목 없음';
+        answer += `${idx + 1}. ${title}\n`;
         if (item.description) answer += `   ${item.description}\n`;
-        sources.push({ title: item.title, url: item.link || '', score: item.score || 0 });
+        sources.push({ title: title, url: item.link || '', score: item.score || 0 });
       });
 
       if (max_length && answer.length > max_length) {
