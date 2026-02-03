@@ -83,13 +83,13 @@ app.post('/ask', async (req, res) => {
           if (item.needLevel) answer += ` | 습득레벨: ${item.needLevel}`;
           if (item.needGold) answer += ` | 비용: ${formatGold(item.needGold)}G`;
           answer += '\n';
-          // 스탯 요구사항
+          // 스탯 요구사항 (0이 아닌 것만)
           const stats = [];
-          if (item.needStr) stats.push(`힘${item.needStr}`);
-          if (item.needDex) stats.push(`민${item.needDex}`);
-          if (item.needInt) stats.push(`지${item.needInt}`);
-          if (item.needWis) stats.push(`정${item.needWis}`);
-          if (item.needCon) stats.push(`체${item.needCon}`);
+          if (item.needStr && item.needStr > 0) stats.push(`힘${item.needStr}`);
+          if (item.needDex && item.needDex > 0) stats.push(`민${item.needDex}`);
+          if (item.needInt && item.needInt > 0) stats.push(`지${item.needInt}`);
+          if (item.needWis && item.needWis > 0) stats.push(`정${item.needWis}`);
+          if (item.needCon && item.needCon > 0) stats.push(`체${item.needCon}`);
           if (stats.length > 0) answer += `   요구스탯: ${stats.join(' ')}\n`;
           if (item.needItem) answer += `   필요아이템: ${item.needItem}\n`;
         }
@@ -99,12 +99,13 @@ app.post('/ask', async (req, res) => {
           if (item.needLevel) answer += `   습득레벨: ${item.needLevel}`;
           if (item.needGold) answer += ` | 비용: ${formatGold(item.needGold)}G`;
           answer += '\n';
+          // 스탯 요구사항 (0이 아닌 것만)
           const stats = [];
-          if (item.needStr) stats.push(`힘${item.needStr}`);
-          if (item.needDex) stats.push(`민${item.needDex}`);
-          if (item.needInt) stats.push(`지${item.needInt}`);
-          if (item.needWis) stats.push(`정${item.needWis}`);
-          if (item.needCon) stats.push(`체${item.needCon}`);
+          if (item.needStr && item.needStr > 0) stats.push(`힘${item.needStr}`);
+          if (item.needDex && item.needDex > 0) stats.push(`민${item.needDex}`);
+          if (item.needInt && item.needInt > 0) stats.push(`지${item.needInt}`);
+          if (item.needWis && item.needWis > 0) stats.push(`정${item.needWis}`);
+          if (item.needCon && item.needCon > 0) stats.push(`체${item.needCon}`);
           if (stats.length > 0) answer += `   요구스탯: ${stats.join(' ')}\n`;
           if (item.needItem) answer += `   필요아이템: ${item.needItem}\n`;
         }
