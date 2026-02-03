@@ -44,7 +44,49 @@ app.post('/ask', async (req, res) => {
 
       items.forEach((item, idx) => {
         const title = item.displayName || item.name || '제목 없음';
-        answer += `${idx + 1}. ${title}\n`;
+        answer += `${idx + 1}. [${item.categoryName || item.category}] ${title}\n`;
+
+        // 아이템 정보
+        if (item.category === 'item') {
+          if (item.level) answer += `   레벨: ${item.level}`;
+          if (item.job) answer += ` | 직업: ${item.job}`;
+          if (item.ac) answer += ` | AC: ${item.ac}`;
+          if (item.smallDamage || item.largeDamage) answer += ` | 데미지: ${item.smallDamage || 0}/${item.largeDamage || 0}`;
+          answer += '\n';
+        }
+
+        // 마법 정보
+        if (item.category === 'spell') {
+          if (item.costMana) answer += `   MP소모: ${item.costMana}`;
+          if (item.needLevel) answer += ` | 습득레벨: ${item.needLevel}`;
+          if (item.needGold) answer += ` | 비용: ${item.needGold}G`;
+          answer += '\n';
+          // 스탯 요구사항
+          const stats = [];
+          if (item.needStr) stats.push(`힘${item.needStr}`);
+          if (item.needDex) stats.push(`민${item.needDex}`);
+          if (item.needInt) stats.push(`지${item.needInt}`);
+          if (item.needWis) stats.push(`정${item.needWis}`);
+          if (item.needCon) stats.push(`체${item.needCon}`);
+          if (stats.length > 0) answer += `   요구스탯: ${stats.join(' ')}\n`;
+          if (item.needItem) answer += `   필요아이템: ${item.needItem}\n`;
+        }
+
+        // 기술 정보
+        if (item.category === 'skill') {
+          if (item.needLevel) answer += `   습득레벨: ${item.needLevel}`;
+          if (item.needGold) answer += ` | 비용: ${item.needGold}G`;
+          answer += '\n';
+          const stats = [];
+          if (item.needStr) stats.push(`힘${item.needStr}`);
+          if (item.needDex) stats.push(`민${item.needDex}`);
+          if (item.needInt) stats.push(`지${item.needInt}`);
+          if (item.needWis) stats.push(`정${item.needWis}`);
+          if (item.needCon) stats.push(`체${item.needCon}`);
+          if (stats.length > 0) answer += `   요구스탯: ${stats.join(' ')}\n`;
+          if (item.needItem) answer += `   필요아이템: ${item.needItem}\n`;
+        }
+
         if (item.description) answer += `   ${item.description}\n`;
         sources.push({ title: title, url: item.link || '', score: item.score || 0 });
       });
