@@ -23,6 +23,10 @@ class NoticeService {
         // Gemini API 설정
         this.geminiApiKey = process.env.GEMINI_API_KEY || '';
         this.geminiModel = 'gemini-2.0-flash';
+        // 일일 토큰 제한
+        this.dailyTokenLimit = 100000;
+        this.dailyTokenUsage = 0;
+        this.tokenResetDate = new Date().toDateString();
     }
 
     // ── 초기화 ──
@@ -278,6 +282,17 @@ class NoticeService {
         );
         if (cached.length > 0 && cached[0].summary) return cached[0].summary;
 
+        // 일일 토큰 제한 체크
+        const today = new Date().toDateString();
+        if (this.tokenResetDate !== today) {
+            this.dailyTokenUsage = 0;
+            this.tokenResetDate = today;
+        }
+        if (this.dailyTokenUsage >= this.dailyTokenLimit) {
+            console.log(`일일 토큰 한도 초과 (${this.dailyTokenUsage}/${this.dailyTokenLimit})`);
+            return null;
+        }
+
         try {
             const prompt = `다음은 게임 공지사항/업데이트 내용입니다. 핵심 내용만 간결하게 요약해주세요.
 - 점검 시간, 변경사항, 이벤트 등 중요한 정보 위주로
@@ -296,6 +311,11 @@ ${content.substring(0, 2000)}`;
                 },
                 { timeout: 15000 }
             );
+
+            // 토큰 사용량 기록
+            const usage = resp.data?.usageMetadata?.totalTokenCount || 0;
+            this.dailyTokenUsage += usage;
+            console.log(`Gemini 토큰 사용: ${usage} (일일 누적: ${this.dailyTokenUsage}/${this.dailyTokenLimit})`);
 
             const summary = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text;
             if (summary) {
