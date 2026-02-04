@@ -378,7 +378,7 @@ def handle_admin_command(msg, sender_id, room_id=None):
         try:
             resp = requests.post(
                 f"{WIKIBOT_URL}/api/nickname/admin/verify",
-                json={"admin_id": sender_id, "room_id": room_id},
+                json={"admin_id": sender_id},
                 timeout=5,
             )
             data = resp.json()
