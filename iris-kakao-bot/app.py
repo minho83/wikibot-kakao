@@ -81,6 +81,20 @@ def format_search_result(result, sender):
     return response.strip()
 
 
+def multi_search(endpoint, query, sender):
+    """& 구분자로 여러 검색어 동시 검색"""
+    queries = [q.strip() for q in query.split("&") if q.strip()]
+    if len(queries) <= 1:
+        result = ask_wikibot(endpoint, query)
+        return format_search_result(result, sender)
+
+    parts = []
+    for q in queries[:5]:
+        result = ask_wikibot(endpoint, q, max_length=300)
+        parts.append(f"【{q}】\n{format_search_result(result, sender)}")
+    return "\n\n".join(parts)
+
+
 # ── 닉네임/입퇴장 ────────────────────────────────────────
 
 def check_nickname(sender_name, sender_id, room_id):
@@ -342,8 +356,7 @@ def webhook():
         elif msg_stripped.startswith("!아이템"):
             query = msg_stripped[4:].strip()
             if query:
-                result = ask_wikibot("/ask/item", query)
-                response_msg = format_search_result(result, sender)
+                response_msg = multi_search("/ask/item", query, sender)
             else:
                 response_msg = "검색어를 입력해주세요. 예: !아이템 오리하르콘"
 
@@ -351,8 +364,7 @@ def webhook():
         elif msg_stripped.startswith("!스킬") or msg_stripped.startswith("!마법"):
             query = msg_stripped[3:].strip()
             if query:
-                result = ask_wikibot("/ask/skill", query)
-                response_msg = format_search_result(result, sender)
+                response_msg = multi_search("/ask/skill", query, sender)
             else:
                 response_msg = "검색어를 입력해주세요. 예: !스킬 메테오"
 
@@ -394,7 +406,10 @@ def webhook():
 !게시판 [키워드] - 게시판 검색
 !검색 [키워드] - 통합 검색
 !공지 [날짜] - 공지사항 (예: !공지 2/5)
-!업데이트 [날짜] - 업데이트 내역"""
+!업데이트 [날짜] - 업데이트 내역
+
+💡 &로 여러 개 동시 검색 가능
+예: !아이템 오리하르콘 & 미스릴"""
 
         # 응답 전송
         if response_msg:
