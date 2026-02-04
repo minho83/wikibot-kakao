@@ -792,9 +792,28 @@ class TradeService {
     return trimmed.reduce((a, b) => a + b, 0) / trimmed.length;
   }
 
+  /**
+   * 단위 표현 추출용 SQL CASE 절
+   */
+  _pricingUnitSqlCase() {
+    return `CASE
+      WHEN item_options LIKE '%1000개당%' THEN '1000개당'
+      WHEN item_options LIKE '%500개당%' THEN '500개당'
+      WHEN item_options LIKE '%100개당%' THEN '100개당'
+      WHEN item_options LIKE '%10개당%' THEN '10개당'
+      WHEN item_options LIKE '%개당%' THEN '개당'
+      WHEN item_options LIKE '%장당%' THEN '장당'
+      WHEN item_options LIKE '%묶음당%' THEN '묶음당'
+      WHEN item_options LIKE '%셋당%' THEN '셋당'
+      WHEN item_options LIKE '%벌당%' THEN '벌당'
+      ELSE ''
+    END`;
+  }
+
   _aggregateStats(canonicalName, enhancement, dateLimitStr) {
-    // 개별 가격 조회 (이상치 제거용)
-    let sql = `SELECT price_unit, trade_type, price FROM trades
+    const puCase = this._pricingUnitSqlCase();
+    let sql = `SELECT price_unit, trade_type, price, ${puCase} as pricing_unit
+      FROM trades
       WHERE canonical_name = ? AND trade_date >= ?`;
     const params = [canonicalName, dateLimitStr];
 
@@ -807,51 +826,51 @@ class TradeService {
     const result = this.db.exec(sql, params);
     if (result.length === 0 || result[0].values.length === 0) return null;
 
-    const stats = {};
+    // 단위별 → 가격단위별 → 거래타입별 그룹화
+    const groups = {};
     let totalCount = 0;
 
-    // 가격 단위+거래타입별 가격 수집
-    const priceGroups = {};
-    for (const row of result[0].values) {
-      const [pu, tradeType, price] = row;
-      const key = `${pu}_${tradeType || 'unknown'}`;
-      if (!priceGroups[key]) priceGroups[key] = { pu, tradeType, prices: [] };
-      priceGroups[key].prices.push(price);
+    for (const [pu, tradeType, price, pricingUnit] of result[0].values) {
+      const puKey = pricingUnit || '';
+      if (!groups[puKey]) groups[puKey] = {};
+      if (!groups[puKey][pu]) {
+        groups[puKey][pu] = { _sellPrices: [], _buyPrices: [], _allPrices: [] };
+      }
+      const bucket = groups[puKey][pu];
+      bucket._allPrices.push(price);
+      if (tradeType === 'sell') bucket._sellPrices.push(price);
+      else if (tradeType === 'buy') bucket._buyPrices.push(price);
+      totalCount++;
     }
 
-    for (const group of Object.values(priceGroups)) {
-      const { pu, tradeType, prices } = group;
-      if (!stats[pu]) {
-        stats[pu] = {
-          count: 0, avg: 0, min: Infinity, max: -Infinity,
-          sellAvg: null, sellCount: 0, buyAvg: null, buyCount: 0,
-          _allPrices: []
+    // 통계 계산
+    for (const pricingUnit of Object.keys(groups)) {
+      for (const pu of Object.keys(groups[pricingUnit])) {
+        const b = groups[pricingUnit][pu];
+        const stats = {
+          count: b._allPrices.length,
+          avg: Math.round(this._trimmedMean(b._allPrices) * 10) / 10,
+          min: Math.min(...b._allPrices),
+          max: Math.max(...b._allPrices),
+          sellAvg: null, sellCount: 0,
+          buyAvg: null, buyCount: 0
         };
+        if (b._sellPrices.length > 0) {
+          stats.sellAvg = Math.round(this._trimmedMean(b._sellPrices) * 10) / 10;
+          stats.sellCount = b._sellPrices.length;
+        }
+        if (b._buyPrices.length > 0) {
+          stats.buyAvg = Math.round(this._trimmedMean(b._buyPrices) * 10) / 10;
+          stats.buyCount = b._buyPrices.length;
+        }
+        groups[pricingUnit][pu] = stats;
       }
-      const s = stats[pu];
-      const trimmedAvg = Math.round(this._trimmedMean(prices) * 10) / 10;
-      s.count += prices.length;
-      s._allPrices.push(...prices);
-      s.min = Math.min(s.min, Math.min(...prices));
-      s.max = Math.max(s.max, Math.max(...prices));
-      if (tradeType === 'sell') {
-        s.sellAvg = trimmedAvg;
-        s.sellCount = prices.length;
-      } else if (tradeType === 'buy') {
-        s.buyAvg = trimmedAvg;
-        s.buyCount = prices.length;
-      }
-      totalCount += prices.length;
     }
 
-    // 전체 이상치 제거 평균
-    for (const pu of Object.keys(stats)) {
-      const s = stats[pu];
-      s.avg = Math.round(this._trimmedMean(s._allPrices) * 10) / 10;
-      delete s._allPrices;
-    }
+    const puKeys = Object.keys(groups);
+    const hasMixedUnits = puKeys.length > 1 || (puKeys.length === 1 && puKeys[0] !== '');
 
-    return { byUnit: stats, count: totalCount };
+    return { groups, totalCount, hasMixedUnits };
   }
 
   _getRecentTrades(canonicalName, enhancement, dateLimitStr, limit) {
@@ -884,110 +903,110 @@ class TradeService {
 
   _formatEnhancementSummary(canonical, dateLimitStr, days) {
     const unitLabels = { gj: 'ㄱㅈ', won: '만원', eok: '억' };
+    const puCase = this._pricingUnitSqlCase();
 
-    // 강화+레벨+거래타입별 조회
     const result = this.db.exec(`
-      SELECT enhancement, item_level, price_unit, trade_type,
+      SELECT enhancement, item_level, price_unit, trade_type, ${puCase} as pricing_unit,
         COUNT(*) as cnt, AVG(price) as avg_price,
         MIN(price) as min_price, MAX(price) as max_price
       FROM trades
       WHERE canonical_name = ? AND trade_date >= ?
-      GROUP BY enhancement, item_level, price_unit, trade_type
+      GROUP BY enhancement, item_level, price_unit, trade_type, pricing_unit
       ORDER BY enhancement ASC, item_level ASC, cnt DESC
     `, [canonical, dateLimitStr]);
-
-    // 단위 표현(개당 등) 포함 거래 비율 확인
-    const unitCheck = this.db.exec(`
-      SELECT COUNT(*) as unit_cnt FROM trades
-      WHERE canonical_name = ? AND trade_date >= ?
-        AND (item_options LIKE '%개당%' OR item_options LIKE '%장당%'
-          OR item_options LIKE '%묶음당%' OR item_options LIKE '%셋당%')
-    `, [canonical, dateLimitStr]);
-    const hasUnitPricing = unitCheck.length > 0 && unitCheck[0].values[0][0] > 0;
 
     if (result.length === 0 || result[0].values.length === 0) {
       return { answer: `"${canonical}"의 최근 ${days}일 시세 데이터가 없습니다.`, sources: [] };
     }
 
-    // 강화+레벨별로 그룹화
-    const enhMap = {};
+    // 단위 종류 파악
+    const pricingUnitsSet = new Set();
     for (const row of result[0].values) {
-      const [enh, lvl, pu, tradeType, cnt, avg, min, max] = row;
-      const key = `${enh || 0}_${lvl || 0}`;
-      if (!enhMap[key]) enhMap[key] = { enh: enh || 0, lvl: lvl || 0 };
-      if (!enhMap[key][pu]) enhMap[key][pu] = { sell: null, buy: null, total: { count: 0, sum: 0, min: Infinity, max: -Infinity } };
-      const entry = enhMap[key][pu];
+      pricingUnitsSet.add(row[4] || '');
+    }
+    const hasMixedUnits = pricingUnitsSet.size > 1 || (pricingUnitsSet.size === 1 && !pricingUnitsSet.has(''));
+
+    // 단위별 → 강화+레벨별 그룹화
+    const pricingGroups = {};
+    for (const row of result[0].values) {
+      const [enh, lvl, pu, tradeType, pricingUnit, cnt, avg, min, max] = row;
+      const puKey = pricingUnit || '';
+      const enhKey = `${enh || 0}_${lvl || 0}`;
+
+      if (!pricingGroups[puKey]) pricingGroups[puKey] = {};
+      if (!pricingGroups[puKey][enhKey]) {
+        pricingGroups[puKey][enhKey] = { enh: enh || 0, lvl: lvl || 0 };
+      }
+      const entry = pricingGroups[puKey][enhKey];
+      if (!entry[pu]) entry[pu] = { sell: null, buy: null, total: { count: 0, min: Infinity, max: -Infinity } };
+
       const avgRound = Math.round(avg * 10) / 10;
       if (tradeType === 'sell') {
-        entry.sell = { count: cnt, avg: avgRound, min, max };
+        entry[pu].sell = { count: cnt, avg: avgRound, min, max };
       } else if (tradeType === 'buy') {
-        entry.buy = { count: cnt, avg: avgRound, min, max };
+        entry[pu].buy = { count: cnt, avg: avgRound, min, max };
       }
-      entry.total.count += cnt;
-      entry.total.sum += avg * cnt;
-      entry.total.min = Math.min(entry.total.min, min);
-      entry.total.max = Math.max(entry.total.max, max);
+      entry[pu].total.count += cnt;
+      entry[pu].total.min = Math.min(entry[pu].total.min, min);
+      entry[pu].total.max = Math.max(entry[pu].total.max, max);
     }
 
-    const unitNote = hasUnitPricing ? ' (개당가 포함)' : '';
-    let lines = [`[시세] ${canonical}${unitNote}`];
+    let lines = [`[시세] ${canonical}`];
     lines.push('━━━━━━━━━━━━');
 
-    const enhKeys = Object.keys(enhMap).sort((a, b) => {
-      const [ae, al] = a.split('_').map(Number);
-      const [be, bl] = b.split('_').map(Number);
-      return ae !== be ? ae - be : al - bl;
+    // 단위 정렬: 구체적 단위(100개당 등) 먼저, 미표기는 마지막
+    const sortedPricingUnits = Object.keys(pricingGroups).sort((a, b) => {
+      if (a === '' && b !== '') return 1;
+      if (a !== '' && b === '') return -1;
+      return a.localeCompare(b);
     });
-    const mainUnit = 'gj';
 
-    lines.push(`ㄱㅈ 기준 (최근 ${days}일)`);
-    let hasGj = false;
-    for (const key of enhKeys) {
-      const entry = enhMap[key];
-      const data = entry[mainUnit];
-      if (!data) continue;
-      hasGj = true;
-      let label;
-      if (entry.enh === 0 && entry.lvl === 0) label = '노강';
-      else if (entry.enh === 0 && entry.lvl > 0) label = `${entry.lvl}렙`;
-      else if (entry.lvl > 0) label = `${entry.enh}강 ${entry.lvl}렙`;
-      else label = `${entry.enh}강`;
+    for (const pricingUnit of sortedPricingUnits) {
+      const enhMap = pricingGroups[pricingUnit];
+      const enhKeys = Object.keys(enhMap).sort((a, b) => {
+        const [ae, al] = a.split('_').map(Number);
+        const [be, bl] = b.split('_').map(Number);
+        return ae !== be ? ae - be : al - bl;
+      });
 
-      if (data.sell && data.buy) {
-        lines.push(`· ${label}: [판]${data.sell.avg} [구]${data.buy.avg} (${data.total.count}건)`);
-      } else if (data.sell) {
-        lines.push(`· ${label}: [판]${data.sell.avg} (${data.total.count}건)`);
-      } else if (data.buy) {
-        lines.push(`· ${label}: [구]${data.buy.avg} (${data.total.count}건)`);
+      // gj 우선, 없으면 won
+      let displayUnit = 'gj';
+      let hasData = enhKeys.some(key => enhMap[key][displayUnit]);
+      if (!hasData) { displayUnit = 'won'; hasData = enhKeys.some(key => enhMap[key][displayUnit]); }
+      if (!hasData) continue;
+
+      if (hasMixedUnits) {
+        lines.push(`\n[${pricingUnit || '기타'}]`);
       }
-    }
+      lines.push(`${unitLabels[displayUnit]} 기준 (최근 ${days}일)`);
 
-    if (!hasGj) {
-      lines.pop();
-      lines.push(`만원 기준 (최근 ${days}일)`);
       for (const key of enhKeys) {
         const entry = enhMap[key];
-        const data = entry['won'];
+        const data = entry[displayUnit];
         if (!data) continue;
+
         let label;
         if (entry.enh === 0 && entry.lvl === 0) label = '노강';
         else if (entry.enh === 0 && entry.lvl > 0) label = `${entry.lvl}렙`;
         else if (entry.lvl > 0) label = `${entry.enh}강 ${entry.lvl}렙`;
         else label = `${entry.enh}강`;
 
-        if (data.sell && data.buy) {
-          lines.push(`· ${label}: [판]${data.sell.avg} [구]${data.buy.avg} (${data.total.count}건)`);
-        } else if (data.sell) {
-          lines.push(`· ${label}: [판]${data.sell.avg} (${data.total.count}건)`);
-        } else if (data.buy) {
-          lines.push(`· ${label}: [구]${data.buy.avg} (${data.total.count}건)`);
+        const sellStr = data.sell ? `[판]${data.sell.count > 1 ? '평균' : ''}${data.sell.avg}` : null;
+        const buyStr = data.buy ? `[구]${data.buy.count > 1 ? '평균' : ''}${data.buy.avg}` : null;
+
+        if (sellStr && buyStr) {
+          lines.push(`· ${label}: ${sellStr} ${buyStr} (${data.total.count}건)`);
+        } else if (sellStr) {
+          lines.push(`· ${label}: ${sellStr} (${data.total.count}건)`);
+        } else if (buyStr) {
+          lines.push(`· ${label}: ${buyStr} (${data.total.count}건)`);
         }
       }
     }
 
     lines.push('');
     lines.push('💡 강화별 상세: !가격 5강 ' + canonical.substring(0, 4));
-    lines.push(`\n⚠ 거래오픈톡 ${days}일간 평균값입니다.\n거래에 유의하세요.`);
+    lines.push(`\n⚠ 거래오픈톡 ${days}일간 집계 (2건↑ 이상치제거 평균)\n거래에 유의하세요.`);
 
     return { answer: lines.join('\n').trim(), sources: [] };
   }
@@ -1007,24 +1026,39 @@ class TradeService {
     let lines = [`[시세] ${canonical}${enhStr}`];
     lines.push('━━━━━━━━━━━━');
 
-    // 가격 단위별 통계 (판매/구매 분리)
-    for (const [unit, data] of Object.entries(stats.byUnit)) {
-      const label = unitLabels[unit] || unit;
-      lines.push(`${label} 기준 (최근 ${days}일)`);
-      if (data.sellAvg !== null && data.buyAvg !== null) {
-        lines.push(`· [판] 평균 ${data.sellAvg} (${data.sellCount}건)`);
-        lines.push(`· [구] 평균 ${data.buyAvg} (${data.buyCount}건)`);
-      } else if (data.sellAvg !== null) {
-        lines.push(`· [판] 평균 ${data.sellAvg} (${data.sellCount}건)`);
-      } else if (data.buyAvg !== null) {
-        lines.push(`· [구] 평균 ${data.buyAvg} (${data.buyCount}건)`);
-      } else {
-        lines.push(`· 평균: ${data.avg}`);
+    // 단위 정렬: 구체적 단위 먼저, 미표기 마지막
+    const sortedPricingUnits = Object.keys(stats.groups).sort((a, b) => {
+      if (a === '' && b !== '') return 1;
+      if (a !== '' && b === '') return -1;
+      return a.localeCompare(b);
+    });
+
+    for (const [unitKey, unitLabel] of Object.entries(unitLabels)) {
+      const relevantGroups = sortedPricingUnits.filter(pu => stats.groups[pu][unitKey]);
+      if (relevantGroups.length === 0) continue;
+
+      lines.push(`${unitLabel} 기준 (최근 ${days}일)`);
+
+      for (const pricingUnit of relevantGroups) {
+        const data = stats.groups[pricingUnit][unitKey];
+
+        if (stats.hasMixedUnits) {
+          lines.push(`[${pricingUnit || '기타'}]`);
+        }
+
+        if (data.sellAvg !== null && data.buyAvg !== null) {
+          lines.push(`· [판] ${data.sellCount > 1 ? '평균 ' : ''}${data.sellAvg} (${data.sellCount}건)`);
+          lines.push(`· [구] ${data.buyCount > 1 ? '평균 ' : ''}${data.buyAvg} (${data.buyCount}건)`);
+        } else if (data.sellAvg !== null) {
+          lines.push(`· [판] ${data.sellCount > 1 ? '평균 ' : ''}${data.sellAvg} (${data.sellCount}건)`);
+        } else if (data.buyAvg !== null) {
+          lines.push(`· [구] ${data.buyCount > 1 ? '평균 ' : ''}${data.buyAvg} (${data.buyCount}건)`);
+        }
+        if (data.min !== data.max) {
+          lines.push(`· 범위: ${data.min} ~ ${data.max}`);
+        }
+        lines.push(`· ${data.count}건 집계`);
       }
-      if (data.min !== data.max) {
-        lines.push(`· 범위: ${data.min} ~ ${data.max}`);
-      }
-      lines.push(`· 총 ${data.count}건 등록`);
       lines.push('');
     }
 
@@ -1040,7 +1074,7 @@ class TradeService {
       }
     }
 
-    lines.push(`\n⚠ 거래오픈톡 ${days}일간 평균값입니다.\n거래에 유의하세요.`);
+    lines.push(`\n⚠ 거래오픈톡 ${days}일간 집계 (2건↑ 이상치제거 평균)\n거래에 유의하세요.`);
 
     return { answer: lines.join('\n').trim(), sources: [] };
   }
