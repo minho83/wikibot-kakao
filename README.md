@@ -1,144 +1,131 @@
-# KakaoTalk Wiki Bot with n8n Integration
+# 어둠의전설 카카오톡 챗봇
 
-A KakaoTalk chatbot that integrates with the LOD Wiki search system via n8n workflows.
+어둠의전설(LOD) 게임 데이터베이스 검색 및 공지/업데이트 알림 카카오톡 챗봇입니다.
 
-## Features
+## 주요 기능
 
-- **Command Processing**: Supports wiki search, Q&A, probability queries, and more
-- **Rate Limiting**: Built-in cooldown and request limiting per user
-- **n8n Integration**: Ready-to-use n8n workflow for KakaoTalk integration
-- **Error Handling**: Comprehensive error handling and logging
-- **Health Monitoring**: Built-in health check endpoints
+- **아이템/스킬/마법 검색**: SQLite DB 기반 퍼지 검색 (초성, 오타 지원)
+- **공지사항 조회**: 넥슨 LOD 공지 게시판 파싱 및 DB 저장
+- **업데이트 내역 조회**: 넥슨 LOD 업데이트 게시판 파싱 및 DB 저장
+- **날짜/주차 검색**: 날짜(2/5), 주차(2월 1주차) 기반 공지/업데이트 검색
+- **퍼지 날짜 매칭**: 휴일 등으로 점검일이 변경된 경우 ±3일 범위 자동 검색
+- **자동 알림 스케줄러**: 공지(화 17:05), 업데이트(수 17:00, 목 10:00) 자동 체크
+- **게시판 검색**: LOD 커뮤니티 게시판 키워드 검색
+- **닉네임 변경 감지**: 오픈채팅방 닉네임 변경 이력 추적
+- **Rate Limiting**: 서버 보호를 위한 요청 제한
 
-## Supported Commands
+## 사용 가능한 명령어
 
-- `!검색 [검색어]` - Hybrid search execution
-- `!질문 [질문내용]` - AI-based Q&A
-- `!확률 [뽑기명]` - Nexon Now probability information
-- `!통계` - Database statistics
-- `!연결테스트` - Server connection test
-- `!캐시클리어` - Clear AI response cache
-- `!도움말` - Display help message
+| 명령어 | 설명 | 예시 |
+|--------|------|------|
+| `!검색 [검색어]` | 아이템/기술/마법 검색 | `!검색 메테오`, `!검색 ㅋㄹㅅ` |
+| `!공지` | 최신 정기점검 공지 | `!공지` |
+| `!공지 [날짜]` | 특정 날짜 공지 검색 | `!공지 2/5`, `!공지 2월 1주차` |
+| `!업데이트` | 최신 업데이트 내역 | `!업데이트` |
+| `!업데이트 [날짜]` | 특정 날짜 업데이트 검색 | `!업데이트 1/22`, `!업데이트 1월 3주차` |
+| `!게시판 [검색어]` | 커뮤니티 게시판 검색 | `!게시판 발록` |
+| `!통계` | 데이터베이스 통계 | `!통계` |
+| `!도움말` | 도움말 표시 | `!도움말` |
 
-## Installation
+### 날짜 검색 지원 형식
 
-1. Clone the repository:
+- `2/5` 또는 `2/5일` - 날짜 직접 지정
+- `2월 5일` - 한글 날짜
+- `2월 1주차` - 해당 월 N번째 목요일로 자동 변환
+
+## 설치
+
 ```bash
 git clone <repository-url>
-cd wikibot
-```
-
-2. Install dependencies:
-```bash
+cd wikibot-kakao
 npm install
 ```
 
-3. Configure environment variables:
+## 설정
+
 ```bash
 cp .env.example .env
-# Edit .env with your configuration
 ```
 
-4. Start the server:
+### 환경 변수
+
+| 변수 | 설명 | 기본값 |
+|------|------|--------|
+| `PORT` | 서버 포트 | `3000` |
+| `NODE_ENV` | 실행 환경 | `development` |
+| `NOTICE_WEBHOOK_URL` | 새 공지 발견 시 알림 전송 URL | (비활성) |
+| `NOTICE_SCHEDULE` | 공지 자동 체크 스케줄 | `2-17:05` (화 17:05) |
+| `UPDATE_SCHEDULE` | 업데이트 자동 체크 스케줄 | `3-17:00,4-10:00` (수 17:00, 목 10:00) |
+| `COOLDOWN_SECONDS` | 요청 간 쿨다운(초) | `5` |
+| `MAX_REQUESTS_PER_USER` | 시간당 최대 요청 수 | `100` |
+
+### 스케줄 형식
+
+`요일-시:분` (쉼표로 복수 지정 가능)
+- 요일: 0=일, 1=월, 2=화, 3=수, 4=목, 5=금, 6=토
+- 예: `2-17:05` → 화요일 17:05
+- 예: `3-17:00,4-10:00` → 수요일 17:00 + 목요일 10:00
+
+## 실행
+
 ```bash
+# 개발 모드 (자동 재시작)
+npm run dev
+
+# 운영 모드
 npm start
-# or for development
-npm run dev
+
+# PM2 사용
+pm2 start src/index.js --name wikibot-kakao
 ```
 
-## Configuration
+## API 엔드포인트
 
-### Environment Variables
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| `POST` | `/webhook/kakao` | 카카오톡 웹훅 (명령어 처리) |
+| `POST` | `/ask` | 통합 검색 |
+| `POST` | `/ask/item` | 아이템 전용 검색 |
+| `POST` | `/ask/skill` | 스킬/마법 전용 검색 |
+| `POST` | `/ask/community` | 게시판 검색 |
+| `POST` | `/ask/notice` | 공지사항 조회 |
+| `POST` | `/ask/update` | 업데이트 조회 |
+| `GET` | `/ask/check-new` | 새 공지/업데이트 확인 (자동 알림용) |
+| `GET` | `/health` | 서버 상태 확인 |
 
-- `PORT` - Server port (default: 3000)
-- `NODE_ENV` - Environment (development/production)
-- `WIKI_API_BASE_URL` - Wiki API base URL
-- `WIKI_API_TIMEOUT` - API timeout in milliseconds
-- `COOLDOWN_SECONDS` - Cooldown between requests (default: 5)
-- `MAX_REQUESTS_PER_USER` - Max requests per user per hour (default: 100)
-
-### n8n Workflow Setup
-
-1. Import the workflow from `n8n/workflows/kakao-chatbot-workflow.json`
-2. Configure the webhook URL in your KakaoTalk channel
-3. Update the Wiki API Call node URL to match your server
-4. Activate the workflow
-
-## API Endpoints
-
-### Webhook Endpoint
-```
-POST /webhook/kakao
-```
-
-Request format:
-```json
-{
-  "message": "!검색 퀘스트",
-  "user_id": "user123",
-  "room_id": "room456"
-}
-```
-
-Response format:
-```json
-{
-  "success": true,
-  "message": "검색 결과...",
-  "response_type": "text"
-}
-```
-
-### Health Check
-```
-GET /health
-```
-
-## Architecture
+## 프로젝트 구조
 
 ```
-KakaoTalk → n8n Webhook → Message Parser → Wiki API → Response Formatter → KakaoTalk
+wikibot-kakao/
+├── src/
+│   ├── index.js                  # 서버 진입점, 라우팅, 스케줄러
+│   ├── controllers/
+│   │   ├── webhookController.js  # 카카오톡 명령어 처리
+│   │   └── nicknameController.js # 닉네임 관리 API
+│   ├── services/
+│   │   ├── searchService.js      # 아이템/스킬/마법 검색 (SQLite)
+│   │   ├── noticeService.js      # 공지/업데이트 파싱 + DB 저장
+│   │   ├── communityService.js   # 게시판 스크래핑
+│   │   └── nicknameService.js    # 닉네임 변경 감지 (SQLite)
+│   ├── utils/
+│   │   ├── messageParser.js      # 명령어 파싱
+│   │   └── responseFormatter.js  # 응답 포맷팅
+│   └── middleware/
+│       ├── rateLimiter.js        # 요청 제한
+│       └── errorHandler.js       # 에러 처리
+├── .env.example                  # 환경 변수 템플릿
+└── package.json
 ```
 
-## Rate Limiting
+## 데이터베이스
 
-- 5-second cooldown between commands per user (configurable)
-- Maximum 100 requests per user per hour (configurable)
-- Automatic cleanup of rate limit data
+| DB 파일 | 용도 |
+|---------|------|
+| `nickname.db` | 닉네임 변경 이력 |
+| `notice.db` | 공지/업데이트 기록 (자동 생성) |
 
-## Error Handling
+`notice.db`는 웹에서 가져온 공지/업데이트를 자동 저장하며, 제목에서 점검 대상 날짜(`target_date`)를 추출하여 날짜 기반 검색을 지원합니다.
 
-- Comprehensive error logging
-- User-friendly error messages
-- Development vs production error details
-- Automatic retry logic for API calls
-
-## Development
-
-```bash
-# Start in development mode
-npm run dev
-
-# Run tests
-npm test
-```
-
-## Production Deployment
-
-1. Set `NODE_ENV=production`
-2. Configure production environment variables
-3. Use process manager like PM2:
-```bash
-pm2 start src/index.js --name wikibot
-```
-
-## Integration with Existing Wiki System
-
-This bot is designed to work with the existing LOD Wiki system at:
-- Base URL: `http://192.168.0.3:8000`
-- Uses existing `/api/messenger/*` endpoints
-- Maintains compatibility with current rate limiting and caching
-
-## License
+## 라이선스
 
 MIT
