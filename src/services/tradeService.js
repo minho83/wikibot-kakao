@@ -12,6 +12,7 @@ class TradeService {
     this.saveInterval = null;
     this.aliasMap = new Map(); // alias → canonical_name
     this.knownItems = new Set(); // LOD_DB에서 로드한 아이템명
+    this.rejectedPatterns = new Set(); // cleanup에서 학습된 거부 패턴
   }
 
   async initialize() {
@@ -31,6 +32,7 @@ class TradeService {
       this._seedAliases();
       this._buildAliasIndex();
       this._loadLodItems(SQL);
+      this._loadRejectedPatterns();
       this.initialized = true;
 
       this.saveInterval = setInterval(() => this.saveDb(), 5 * 60 * 1000);
@@ -66,6 +68,25 @@ class TradeService {
       console.log(`LOD_DB loaded: ${this.knownItems.size} item names`);
     } catch (e) {
       console.error('Failed to load LOD_DB:', e);
+    }
+  }
+
+  /**
+   * rejected_patterns 테이블에서 학습된 거부 패턴 로드 (3회 이상 거부된 것만)
+   */
+  _loadRejectedPatterns() {
+    try {
+      const result = this.db.exec(`SELECT pattern FROM rejected_patterns WHERE reject_count >= 3`);
+      if (result.length > 0) {
+        for (const row of result[0].values) {
+          this.rejectedPatterns.add(row[0]);
+        }
+      }
+      if (this.rejectedPatterns.size > 0) {
+        console.log(`Rejected patterns loaded: ${this.rejectedPatterns.size}개`);
+      }
+    } catch (e) {
+      // 테이블 없을 수 있음 (최초 실행)
     }
   }
 
@@ -120,6 +141,15 @@ class TradeService {
         collect INTEGER DEFAULT 0,
         enabled INTEGER DEFAULT 1,
         created_at TEXT DEFAULT (datetime('now','localtime'))
+      )
+    `);
+
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS rejected_patterns (
+        pattern TEXT PRIMARY KEY,
+        reject_count INTEGER DEFAULT 1,
+        last_seen TEXT DEFAULT (datetime('now','localtime')),
+        source TEXT DEFAULT 'cleanup'
       )
     `);
 
@@ -579,6 +609,11 @@ class TradeService {
 
     // 정식명 찾기
     const canonical = this.aliasMap.get(itemName) || itemName;
+
+    // 학습된 거부 패턴 체크
+    if (this.rejectedPatterns.has(canonical) || this.rejectedPatterns.has(itemName)) {
+      return null;
+    }
 
     // 옵션 합치기 (기존 옵션 + 단위)
     const allOptions = [...optResult.options];
@@ -1222,8 +1257,20 @@ class TradeService {
         }
         removed++;
         removedNames.push(`${name}(${cnt}건)`);
+
+        // 거부 패턴 학습
+        this.db.run(`
+          INSERT INTO rejected_patterns (pattern, reject_count, last_seen, source)
+          VALUES (?, 1, datetime('now','localtime'), 'cleanup')
+          ON CONFLICT(pattern) DO UPDATE SET
+            reject_count = reject_count + 1,
+            last_seen = datetime('now','localtime')
+        `, [name]);
       }
     }
+
+    // 메모리 캐시 갱신 (3회 이상 거부된 패턴)
+    this._loadRejectedPatterns();
 
     this.saveDb();
 
@@ -1363,6 +1410,8 @@ class TradeService {
     const itemCount = this.db.exec(`SELECT COUNT(DISTINCT canonical_name) FROM trades`);
     const dateRange = this.db.exec(`SELECT MIN(trade_date), MAX(trade_date) FROM trades`);
     const aliasCount = this.db.exec(`SELECT COUNT(*) FROM item_aliases`);
+    const rejectedCount = this.db.exec(`SELECT COUNT(*) FROM rejected_patterns`);
+    const activeRejected = this.db.exec(`SELECT COUNT(*) FROM rejected_patterns WHERE reject_count >= 3`);
 
     return {
       success: true,
@@ -1371,6 +1420,8 @@ class TradeService {
       dateFrom: dateRange[0]?.values[0][0] || null,
       dateTo: dateRange[0]?.values[0][1] || null,
       aliases: aliasCount[0]?.values[0][0] || 0,
+      rejectedPatterns: rejectedCount[0]?.values[0][0] || 0,
+      activeRejectedPatterns: activeRejected[0]?.values[0][0] || 0,
     };
   }
 
