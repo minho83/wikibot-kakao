@@ -467,7 +467,13 @@ class TradeService {
     // 섹션 헤더면 null (호출자가 별도 처리)
     if (this._detectSectionHeader(line)) return null;
 
-    const trimmed = line.trim();
+    // URL 및 오픈채팅 링크 제거
+    const trimmed = line.trim()
+      .replace(/https?:\/\/\S+/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!trimmed || trimmed.length < 2) return null;
 
     // 가격 추출
     const priceResult = this._extractPrice(trimmed);
