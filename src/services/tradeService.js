@@ -980,8 +980,10 @@ class TradeService {
     }
     const hasMixedUnits = pricingUnitsSet.size > 1 || (pricingUnitsSet.size === 1 && !pricingUnitsSet.has(''));
 
+    const isBundleItem = this.bundleItems.has(canonical);
+
     // 강화 종류 파악 (필터링 후 표시될 데이터만 기준)
-    // → 묶음 아이템의 경우 '' (기타), '개당' 노이즈 제외 후 판단
+    // → 묶음 아이템의 경우 '' (기타) 노이즈 제외 후 판단
     const enhancementSet = new Set();
     for (const row of result[0].values) {
       const puKey = row[4] || '';
@@ -1024,8 +1026,6 @@ class TradeService {
       if (a !== '' && b === '') return -1;
       return a.localeCompare(b);
     });
-
-    const isBundleItem = this.bundleItems.has(canonical);
 
     // 묶음 아이템: 벌크 단위에서 개당 환산가 계산 + 노이즈 개당 데이터 검증
     let crossVal = null;
