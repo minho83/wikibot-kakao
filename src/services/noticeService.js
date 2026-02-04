@@ -20,6 +20,9 @@ class NoticeService {
         this.cacheTTL = 5 * 60 * 1000; // 5분
         // 자동 알림용
         this.lastNotifiedId = { notice: null, update: null };
+        // Gemini API 설정
+        this.geminiApiKey = process.env.GEMINI_API_KEY || '';
+        this.geminiModel = 'gemini-2.0-flash';
     }
 
     // ── 초기화 ──
@@ -60,6 +63,13 @@ class NoticeService {
             CREATE INDEX IF NOT EXISTS idx_notices_target
             ON notices(type, target_date)
         `);
+
+        // summary 컬럼 추가 (기존 DB 호환)
+        try {
+            this.db.run(`ALTER TABLE notices ADD COLUMN summary TEXT`);
+        } catch (e) {
+            // 이미 컬럼이 있으면 무시
+        }
     }
 
     _saveDb() {
@@ -256,6 +266,53 @@ class NoticeService {
         return `${t.getMonth() + 1}/${t.getDate()}`;
     }
 
+    // ── AI 요약 ──
+
+    async _summarize(content, title, postId, type) {
+        if (!content || !this.geminiApiKey) return null;
+
+        // DB에 캐시된 요약이 있으면 반환
+        const cached = this._queryAll(
+            `SELECT summary FROM notices WHERE post_id = ? AND type = ? AND summary IS NOT NULL AND summary != ''`,
+            [postId, type]
+        );
+        if (cached.length > 0 && cached[0].summary) return cached[0].summary;
+
+        try {
+            const prompt = `다음은 게임 공지사항/업데이트 내용입니다. 핵심 내용만 간결하게 요약해주세요.
+- 점검 시간, 변경사항, 이벤트 등 중요한 정보 위주로
+- 불필요한 인사말이나 반복 문구 제거
+- 300자 이내로 요약
+
+제목: ${title}
+내용:
+${content.substring(0, 2000)}`;
+
+            const resp = await axios.post(
+                `https://generativelanguage.googleapis.com/v1beta/models/${this.geminiModel}:generateContent?key=${this.geminiApiKey}`,
+                {
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { maxOutputTokens: 500, temperature: 0.3 }
+                },
+                { timeout: 15000 }
+            );
+
+            const summary = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (summary) {
+                // DB에 캐시 저장
+                this.db.run(
+                    `UPDATE notices SET summary = ? WHERE post_id = ? AND type = ?`,
+                    [summary, postId, type]
+                );
+                this._saveDb();
+                return summary;
+            }
+        } catch (e) {
+            console.error('Gemini 요약 오류:', e.response?.data?.error?.message || e.message);
+        }
+        return null;
+    }
+
     // ── 공개 API ──
 
     _truncate(text, max = 700) {
@@ -289,6 +346,8 @@ class NoticeService {
                         nearbyNote = `\n(${dateStr} 정확한 공지는 없어 가까운 날짜 ${main.target_date} 결과입니다)\n`;
                     }
 
+                    const summary = await this._summarize(main.content, main.title, main.post_id, 'notice');
+
                     return {
                         success: true,
                         data: {
@@ -296,7 +355,7 @@ class NoticeService {
                             title: main.title,
                             date: main.post_date,
                             category: main.category,
-                            content: nearbyNote + this._truncate(main.content),
+                            content: nearbyNote + (summary || this._truncate(main.content)),
                             link: `${this.baseUrl}${main.link}`,
                             otherNotices: others.map(r => ({
                                 id: r.post_id, title: r.title,
@@ -321,6 +380,7 @@ class NoticeService {
                 [target.id]
             );
             const content = dbRow.length > 0 ? dbRow[0].content : '';
+            const summary = await this._summarize(content, target.title, target.id, 'notice');
 
             return {
                 success: true,
@@ -329,7 +389,7 @@ class NoticeService {
                     title: target.title,
                     date: target.date,
                     category: target.category,
-                    content: this._truncate(content),
+                    content: summary || this._truncate(content),
                     link: `${this.baseUrl}${target.link}`,
                     otherNotices: list.filter(r => r.id !== target.id).slice(0, 3)
                 }
@@ -365,6 +425,8 @@ class NoticeService {
                         nearbyNote = `\n(${dateStr} 정확한 업데이트는 없어 가까운 날짜 ${main.target_date} 결과입니다)\n`;
                     }
 
+                    const summary = await this._summarize(main.content, main.title, main.post_id, 'update');
+
                     return {
                         success: true,
                         data: {
@@ -372,7 +434,7 @@ class NoticeService {
                             title: main.title,
                             date: main.post_date,
                             category: main.category,
-                            content: nearbyNote + this._truncate(main.content),
+                            content: nearbyNote + (summary || this._truncate(main.content)),
                             link: `${this.baseUrl}${main.link}`,
                             otherUpdates: others.map(r => ({
                                 id: r.post_id, title: r.title, date: r.post_date
@@ -393,6 +455,7 @@ class NoticeService {
                 [target.id]
             );
             const content = dbRow.length > 0 ? dbRow[0].content : '';
+            const summary = await this._summarize(content, target.title, target.id, 'update');
 
             return {
                 success: true,
@@ -400,7 +463,7 @@ class NoticeService {
                     id: target.id,
                     title: target.title,
                     date: target.date,
-                    content: this._truncate(content),
+                    content: summary || this._truncate(content),
                     link: `${this.baseUrl}${target.link}`,
                     otherUpdates: list.slice(1, 4)
                 }

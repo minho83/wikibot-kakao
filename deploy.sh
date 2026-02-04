@@ -8,6 +8,7 @@ REPO_DIR="$HOME/wikibot-kakao"
 IMAGE_NAME="wikibot-kakao"
 CONTAINER_NAME="wikibot-server"
 DATA_DIR="$HOME/wikibot-data"
+ENV_FILE="$HOME/wikibot-data/.env"
 LOG_FILE="$REPO_DIR/deploy.log"
 
 cd "$REPO_DIR" || exit 1
@@ -49,6 +50,7 @@ docker run -d \
     -p 8100:3000 \
     -v "$DATA_DIR/nickname.db:/app/nickname.db" \
     -v "$DATA_DIR/notice.db:/app/notice.db" \
+    ${ENV_FILE:+--env-file "$ENV_FILE"} \
     "$IMAGE_NAME" >> "$LOG_FILE" 2>&1
 
 # iris-bot 코드도 동기화
