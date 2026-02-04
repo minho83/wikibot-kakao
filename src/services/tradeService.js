@@ -897,6 +897,7 @@ class TradeService {
 
     lines.push('');
     lines.push('💡 강화별 상세: !가격 5강 ' + canonical.substring(0, 4));
+    lines.push(`\n⚠ 거래오픈톡 ${days}일간 평균값입니다.\n거래에 유의하세요.`);
 
     return { answer: lines.join('\n').trim(), sources: [] };
   }
@@ -939,6 +940,8 @@ class TradeService {
         lines.push(`· ${typeLabel} ${enhLabel}${t.price}${unitLabel} (${dateShort})`);
       }
     }
+
+    lines.push(`\n⚠ 거래오픈톡 ${days}일간 평균값입니다.\n거래에 유의하세요.`);
 
     return { answer: lines.join('\n').trim(), sources: [] };
   }
