@@ -1,4 +1,6 @@
 import logging
+import os
+import subprocess
 import requests
 from flask import Flask, request, jsonify
 
@@ -14,6 +16,8 @@ logger = logging.getLogger(__name__)
 WIKIBOT_URL = "http://localhost:3000"
 # IRIS reply 엔드포인트 (IRIS 서버 주소에 맞게 수정)
 IRIS_REPLY_URL = "http://localhost:8080/reply"
+# 배포 스크립트 경로
+DEPLOY_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "deploy.sh")
 
 
 def check_nickname(sender_name, sender_id, room_id):
@@ -48,8 +52,8 @@ def send_reply(room_id, message):
         logger.error(f"IRIS reply 전송 오류: {e}")
 
 
-def handle_admin_command(msg, sender_id):
-    """1:1 DM에서 관리자 명령 처리. 응답 메시지를 반환한다."""
+def handle_admin_command(msg, sender_id, room_id=None):
+    """관리자 명령 처리. 응답 메시지를 반환한다."""
     if msg.startswith("!관리자등록"):
         try:
             resp = requests.post(
@@ -154,6 +158,33 @@ def handle_admin_command(msg, sender_id):
             logger.error(f"이력 조회 오류: {e}")
             return "이력 조회 중 오류가 발생했습니다."
 
+    if msg.startswith("!서버재시작"):
+        # 관리자 + 등록된 채팅방 확인
+        try:
+            resp = requests.post(
+                f"{WIKIBOT_URL}/api/nickname/admin/verify",
+                json={"admin_id": sender_id, "room_id": room_id},
+                timeout=5,
+            )
+            data = resp.json()
+            if not data.get("success"):
+                return data.get("message", "권한이 없습니다.")
+        except Exception:
+            return "권한 확인 중 오류가 발생했습니다."
+
+        # 백그라운드에서 배포 스크립트 실행
+        try:
+            subprocess.Popen(
+                ["bash", DEPLOY_SCRIPT],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            logger.info(f"서버 재시작 스크립트 실행됨 (by {sender_id}, room {room_id})")
+            return "서버 재시작을 시작합니다. (git pull → 빌드 → 재시작)"
+        except Exception as e:
+            logger.error(f"서버 재시작 오류: {e}")
+            return f"서버 재시작 실패: {e}"
+
     return None
 
 
@@ -179,6 +210,20 @@ def webhook():
             result = handle_admin_command(msg, sender_id)
             if result:
                 return jsonify({"success": True, "message": result})
+
+    # 그룹챗/DM에서 방정보 조회
+    if msg.strip() == "!방정보":
+        info = f"[방 정보]\nroom_id: {room}\nsender_id: {sender_id}\nsender: {sender}\nisGroupChat: {is_group}"
+        if is_group:
+            send_reply(room, info)
+        return jsonify({"success": True, "message": info})
+
+    # 그룹챗에서 서버 재시작 명령 처리 (등록된 채팅방의 관리자만)
+    if is_group and msg.startswith("!서버재시작"):
+        result = handle_admin_command(msg, sender_id, room_id=room)
+        if result:
+            send_reply(room, result)
+            return jsonify({"success": True, "message": result})
 
     # 그룹챗에서 모든 메시지에 대해 닉네임 변경 체크
     if is_group and sender_id and room:

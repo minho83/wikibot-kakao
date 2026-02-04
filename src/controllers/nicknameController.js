@@ -138,6 +138,36 @@ router.get('/history/:roomId', (req, res) => {
   }
 });
 
+// POST /api/nickname/admin/verify - 관리자 + 등록된 채팅방 동시 확인
+router.post('/admin/verify', (req, res) => {
+  try {
+    const { admin_id, room_id } = req.body;
+
+    if (!admin_id) {
+      return res.status(400).json({ success: false, message: 'admin_id는 필수입니다.' });
+    }
+
+    const isAdmin = nicknameService.isAdmin(admin_id);
+    if (!isAdmin) {
+      return res.status(403).json({ success: false, message: '관리자 권한이 없습니다.' });
+    }
+
+    // room_id가 있으면 등록된 채팅방인지도 확인
+    if (room_id) {
+      const rooms = nicknameService.listRooms();
+      const isRegistered = rooms.some(r => r.room_id === room_id && r.enabled);
+      if (!isRegistered) {
+        return res.status(403).json({ success: false, message: '등록되지 않은 채팅방입니다.' });
+      }
+    }
+
+    res.json({ success: true, message: '권한 확인 완료' });
+  } catch (error) {
+    console.error('Admin verify error:', error);
+    res.status(500).json({ success: false, message: '권한 확인 중 오류가 발생했습니다.' });
+  }
+});
+
 // POST /api/nickname/admin/register - 관리자 등록 (최초 1회)
 router.post('/admin/register', (req, res) => {
   try {
