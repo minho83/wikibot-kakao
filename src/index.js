@@ -559,6 +559,28 @@ app.post('/api/trade/alias', async (req, res) => {
   }
 });
 
+// 별칭 삭제
+app.delete('/api/trade/alias/:alias', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const result = tradeService.removeAlias(req.params.alias);
+    res.json({ success: result, message: result ? '별칭이 삭제되었습니다.' : '삭제 실패' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 별칭 목록
+app.get('/api/trade/alias', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const aliases = tradeService.listAliases();
+    res.json({ success: true, aliases });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 가격 방 설정 확인
 app.post('/api/trade/room-check', async (req, res) => {
   try {

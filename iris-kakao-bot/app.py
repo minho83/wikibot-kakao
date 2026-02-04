@@ -374,6 +374,76 @@ def handle_admin_command(msg, sender_id, room_id=None):
     if msg.startswith("!가격설정"):
         return "사용법:\n!가격설정 추가 [room_id] [방이름] - 조회만\n!가격설정 수집 [room_id] [방이름] - 수집+조회\n!가격설정 제거 [room_id]\n!가격설정 목록"
 
+    # ── 별칭(줄임말) 관리 ──
+    if msg.startswith("!별칭 추가") or msg.startswith("!별칭추가"):
+        parts = msg.split()
+        if len(parts) < 4:
+            return "사용법: !별칭 추가 [줄임말] [정식명]\n예: !별칭 추가 강세 강화된세피어링"
+        alias_name = parts[2]
+        canonical = parts[3]
+        try:
+            resp = requests.post(
+                f"{WIKIBOT_URL}/api/trade/alias",
+                json={"alias": alias_name, "canonical_name": canonical},
+                timeout=5,
+            )
+            data = resp.json()
+            if data.get("success"):
+                return f"별칭 등록 완료: {alias_name} → {canonical}"
+            return data.get("message", "별칭 등록 실패")
+        except Exception as e:
+            logger.error(f"별칭 추가 오류: {e}")
+            return "별칭 추가 중 오류가 발생했습니다."
+
+    if msg.startswith("!별칭 삭제") or msg.startswith("!별칭삭제"):
+        parts = msg.split()
+        if len(parts) < 3:
+            return "사용법: !별칭 삭제 [줄임말]"
+        alias_name = parts[2]
+        try:
+            resp = requests.delete(
+                f"{WIKIBOT_URL}/api/trade/alias/{alias_name}",
+                timeout=5,
+            )
+            data = resp.json()
+            return data.get("message", "처리 완료")
+        except Exception as e:
+            logger.error(f"별칭 삭제 오류: {e}")
+            return "별칭 삭제 중 오류가 발생했습니다."
+
+    if msg.startswith("!별칭 목록") or msg.startswith("!별칭목록"):
+        try:
+            resp = requests.get(
+                f"{WIKIBOT_URL}/api/trade/alias",
+                timeout=5,
+            )
+            data = resp.json()
+            if not data.get("success"):
+                return "별칭 목록 조회 실패"
+            aliases = data.get("aliases", [])
+            if not aliases:
+                return "등록된 별칭이 없습니다."
+            # 정식명별로 그룹화
+            groups = {}
+            for a in aliases:
+                cn = a.get("canonical_name", "")
+                if cn not in groups:
+                    groups[cn] = []
+                groups[cn].append(a.get("alias", ""))
+            lines = ["[별칭 목록]"]
+            for cn, alias_list in sorted(groups.items()):
+                lines.append(f"· {cn}: {', '.join(alias_list)}")
+            if len(lines) > 30:
+                lines = lines[:30]
+                lines.append(f"... 외 {len(groups) - 29}개")
+            return "\n".join(lines)
+        except Exception as e:
+            logger.error(f"별칭 목록 오류: {e}")
+            return "별칭 목록 조회 중 오류가 발생했습니다."
+
+    if msg.startswith("!별칭"):
+        return "사용법:\n!별칭 추가 [줄임말] [정식명]\n!별칭 삭제 [줄임말]\n!별칭 목록"
+
     if msg.startswith("!서버재시작"):
         try:
             resp = requests.post(
@@ -510,7 +580,7 @@ def webhook():
             response_msg = f"[방 정보]\nroom: {room}\nchat_id: {chat_id}\nsender: {sender}\nuser_id: {user_id}"
 
         # 관리자 명령 (DM 또는 그룹)
-        elif msg_stripped.startswith("!관리자등록") or msg_stripped.startswith("!닉변감지") or msg_stripped.startswith("!닉변이력") or msg_stripped.startswith("!가격설정"):
+        elif msg_stripped.startswith("!관리자등록") or msg_stripped.startswith("!닉변감지") or msg_stripped.startswith("!닉변이력") or msg_stripped.startswith("!가격설정") or msg_stripped.startswith("!별칭"):
             result = handle_admin_command(msg_stripped, user_id, room_id=chat_id)
             if result:
                 response_msg = result
@@ -602,17 +672,25 @@ def webhook():
         elif msg_stripped == "!관리자":
             response_msg = """🔧 관리자 명령어
 
-[가격 시세]
+[가격 시세 조회]
 !가격 [아이템명] - 강화별 시세 요약
-!가격 5강 [아이템명] - 특정 강화 상세 시세
+  (판매/구매 평균 분리 표시)
+!가격 5강 [아이템명] - 특정 강화 상세
   예: !가격 암목, !가격 5강 나겔반지
 
+[가격 방 설정]
 !가격설정 수집 [방ID] [방이름]
-  → 거래방 등록 (시세 자동 수집 + 조회)
+  → 거래방 (시세 자동 수집 + 조회)
 !가격설정 추가 [방ID] [방이름]
-  → 조회 전용방 등록 (조회만 가능)
+  → 조회 전용방 (조회만 가능)
 !가격설정 제거 [방ID]
 !가격설정 목록
+
+[별칭/줄임말 관리]
+!별칭 추가 [줄임말] [정식명]
+  예: !별칭 추가 강세 강화된세피어링
+!별칭 삭제 [줄임말]
+!별칭 목록
 
 [닉네임 감시]
 !닉변감지 추가/제거/목록
