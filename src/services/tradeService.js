@@ -971,6 +971,22 @@ class TradeService {
     const midStr = midDate.toISOString().split('T')[0];
     const startStr = startDate.toISOString().split('T')[0];
 
+    // 묶음 아이템은 가장 거래 많은 pricing_unit만 사용
+    let puFilter = '';
+    const isBundleItem = this.bundleItems.has(canonical);
+    if (isBundleItem) {
+      const puResult = this.db.exec(
+        `SELECT item_options, COUNT(*) as cnt FROM trades
+         WHERE canonical_name = ? AND price_unit = ? AND trade_type = 'sell'
+         AND trade_date >= ? AND trade_type != 'exchange'
+         GROUP BY item_options ORDER BY cnt DESC LIMIT 1`,
+        [canonical, displayUnit, startStr]
+      );
+      if (puResult.length > 0 && puResult[0].values[0][0]) {
+        puFilter = ` AND item_options = '${puResult[0].values[0][0].replace(/'/g, "''")}'`;
+      }
+    }
+
     let enhFilter = '';
     const params1 = [canonical, displayUnit, startStr, midStr];
     const params2 = [canonical, displayUnit, midStr];
@@ -984,14 +1000,14 @@ class TradeService {
     const r1 = this.db.exec(
       `SELECT AVG(price), COUNT(*) FROM trades
        WHERE canonical_name = ? AND price_unit = ? AND trade_date >= ? AND trade_date < ?
-       AND trade_type = 'sell' AND trade_type != 'exchange'${enhFilter}`,
+       AND trade_type = 'sell' AND trade_type != 'exchange'${enhFilter}${puFilter}`,
       params1
     );
     // 후반기 (mid ~ now)
     const r2 = this.db.exec(
       `SELECT AVG(price), COUNT(*) FROM trades
        WHERE canonical_name = ? AND price_unit = ? AND trade_date >= ?
-       AND trade_type = 'sell' AND trade_type != 'exchange'${enhFilter}`,
+       AND trade_type = 'sell' AND trade_type != 'exchange'${enhFilter}${puFilter}`,
       params2
     );
 
