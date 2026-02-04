@@ -10,3 +10,8 @@ test
 tests
 coverage
 .claude
+*.db
+*.txt
+*.png
+iris-kakao-bot
+docs

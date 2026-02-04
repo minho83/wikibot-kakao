@@ -7,9 +7,11 @@ export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 REPO_DIR="$HOME/wikibot-kakao"
 IMAGE_NAME="wikibot-kakao"
 CONTAINER_NAME="wikibot-server"
-DATA_DIR="$HOME/wikibot-data"
 ENV_FILE="$HOME/wikibot-data/.env"
 LOG_FILE="$REPO_DIR/deploy.log"
+
+# DB 파일은 repo 디렉토리에 직접 저장
+DB_DIR="$REPO_DIR"
 
 cd "$REPO_DIR" || exit 1
 
@@ -38,23 +40,35 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# DB 데이터 디렉토리 생성
-mkdir -p "$DATA_DIR"
+# DB 파일이 없으면 생성 (디렉토리가 아닌 파일로)
+for db in nickname.db notice.db trade.db; do
+    if [ ! -f "$DB_DIR/$db" ]; then
+        touch "$DB_DIR/$db"
+    fi
+done
 
-# 컨테이너 재시작 (DB 볼륨 마운트)
+# wikibot 컨테이너 재시작 (DB + LOD_DB 볼륨 마운트)
 docker stop "$CONTAINER_NAME" 2>/dev/null
+sleep 2  # SIGTERM 처리 대기
 docker rm "$CONTAINER_NAME" 2>/dev/null
 docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
     -p 8100:3000 \
-    -v "$DATA_DIR/nickname.db:/app/nickname.db" \
-    -v "$DATA_DIR/notice.db:/app/notice.db" \
-    -v "$DATA_DIR/trade.db:/app/trade.db" \
+    -v "$DB_DIR/nickname.db:/app/nickname.db" \
+    -v "$DB_DIR/notice.db:/app/notice.db" \
+    -v "$DB_DIR/trade.db:/app/trade.db" \
+    -v "$DB_DIR/LOD_DB:/app/LOD_DB" \
     ${ENV_FILE:+--env-file "$ENV_FILE"} \
     "$IMAGE_NAME" >> "$LOG_FILE" 2>&1
 
-# iris-bot 코드도 동기화
-cp "$REPO_DIR/iris-kakao-bot/app.py" "$HOME/iris-kakao-bot/bot-server/app.py" 2>/dev/null
+# iris-bot 코드 동기화 + pycache 삭제 + 재시작
+IRIS_DIR="$HOME/iris-kakao-bot"
+if [ -d "$IRIS_DIR" ]; then
+    cp "$REPO_DIR/iris-kakao-bot/app.py" "$IRIS_DIR/app.py" 2>/dev/null
+    docker exec iris-bot-server rm -rf /app/__pycache__ 2>/dev/null
+    docker restart iris-bot-server >> "$LOG_FILE" 2>&1
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] iris-bot 동기화 완료" >> "$LOG_FILE"
+fi
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 배포 완료: $(git rev-parse --short HEAD)" >> "$LOG_FILE"
