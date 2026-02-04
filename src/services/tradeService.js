@@ -384,21 +384,48 @@ class TradeService {
    * 가격 추출
    */
   _extractPrice(text) {
-    // 엄돈/비율 패턴 (6250:1 등) → 스킵
+    // 어둠돈↔현금 환율 거래 스킵 (6250:1, 6300:1 등)
     if (/\d{3,}:\d/.test(text)) return null;
+    // 순수 어둠돈 거래만 있는 줄 스킵 (ㅇㄷ만 있고 아이템 없음)
+    const odOnly = text.replace(/ㅇㄷ|엄던|어둠돈/g, '').replace(/[\d\s.:,]/g, '').trim();
+    if (odOnly.length < 2 && /ㅇㄷ|엄던|어둠돈/.test(text)) return null;
 
     let price = null;
     let unit = null;
     let raw = '';
     let cleaned = text;
 
-    // ㅇㄷ + 억
-    let m = text.match(/ㅇㄷ\s*(\d+\.?\d*)\s*억/);
+    // 어둠돈 키워드 + 숫자 → eok 단위 (ㅇㄷ 35, 엄던35, 어둠돈 3.8)
+    let m = text.match(/(?:ㅇㄷ|엄던|어둠돈)\s*(\d+\.?\d*)/);
+    if (m && parseFloat(m[1]) > 0) {
+      price = parseFloat(m[1]);
+      unit = 'eok';
+      raw = m[0];
+      cleaned = text.replace(m[0], '').trim();
+      // 잔여 어둠돈 키워드도 제거
+      cleaned = cleaned.replace(/ㅇㄷ|엄던|어둠돈/g, '').trim();
+      return { price, unit, raw, cleaned };
+    }
+
+    // 숫자 + 어둠돈 키워드 (35ㅇㄷ, 3.8엄던)
+    m = text.match(/(\d+\.?\d*)\s*(?:ㅇㄷ|엄던|어둠돈)/);
+    if (m && parseFloat(m[1]) > 0) {
+      price = parseFloat(m[1]);
+      unit = 'eok';
+      raw = m[0];
+      cleaned = text.replace(m[0], '').trim();
+      cleaned = cleaned.replace(/ㅇㄷ|엄던|어둠돈/g, '').trim();
+      return { price, unit, raw, cleaned };
+    }
+
+    // ㅇㄷ + 억 (ㅇㄷ 35억)
+    m = text.match(/(?:ㅇㄷ|엄던|어둠돈)\s*(\d+\.?\d*)\s*억/);
     if (m) {
       price = parseFloat(m[1]);
       unit = 'eok';
       raw = m[0];
       cleaned = text.replace(m[0], '').trim();
+      cleaned = cleaned.replace(/ㅇㄷ|엄던|어둠돈/g, '').trim();
       return { price, unit, raw, cleaned };
     }
 
@@ -409,6 +436,8 @@ class TradeService {
       unit = 'gj';
       raw = m[0];
       cleaned = text.replace(m[0], '').trim();
+      // 어둠돈 키워드가 함께 있으면 제거 (암목 ㅇㄷ 35 ㄱㅈ 23)
+      cleaned = cleaned.replace(/ㅇㄷ|엄던|어둠돈/g, '').replace(/\s+/g, ' ').trim();
       return { price, unit, raw, cleaned };
     }
 
@@ -419,6 +448,7 @@ class TradeService {
       unit = 'gj';
       raw = m[0];
       cleaned = text.replace(m[0], '').trim();
+      cleaned = cleaned.replace(/ㅇㄷ|엄던|어둠돈/g, '').replace(/\s+/g, ' ').trim();
       return { price, unit, raw, cleaned };
     }
 
@@ -429,6 +459,7 @@ class TradeService {
       unit = 'won';
       raw = m[0];
       cleaned = text.replace(m[0], '').trim();
+      cleaned = cleaned.replace(/ㅇㄷ|엄던|어둠돈/g, '').replace(/\s+/g, ' ').trim();
       return { price, unit, raw, cleaned };
     }
 
@@ -439,6 +470,7 @@ class TradeService {
       unit = 'eok';
       raw = m[0];
       cleaned = text.replace(m[0], '').trim();
+      cleaned = cleaned.replace(/ㅇㄷ|엄던|어둠돈/g, '').replace(/\s+/g, ' ').trim();
       return { price, unit, raw, cleaned };
     }
 
@@ -540,6 +572,7 @@ class TradeService {
       .replace(/^[ㅍㅅㅂ]+\s*/, '')  // ㅍ(팝), ㅅ(삽) 접두사 제거
       .replace(/팝니다|삽니다|팜니다|판매합니다|구매합니다|판매|구매|구합니다|구입합니다|팜|삽/g, '')
       .replace(/\d*개당|장당|묶음당|셋당|벌당/g, '')  // 단위 표현 제거 (500개당, 개당, 장당 등)
+      .replace(/ㅇㄷ|엄던|어둠돈/g, '')  // 어둠돈 키워드 제거
       .replace(/[•·\-★☆♧◆■□▪▫~.…,]+/g, '')  // 기호/구두점 제거
       .replace(/\b\d{1,2}\b/g, '')   // 잔여 단독 숫자 제거 (레벨 등)
       .replace(/\s+/g, ' ')
@@ -926,6 +959,54 @@ class TradeService {
   }
 
   /**
+   * 가격 추이 계산 (전반기 vs 후반기 비교)
+   */
+  _calcTrend(canonical, enhancement, days, displayUnit) {
+    const now = new Date();
+    const midDate = new Date();
+    midDate.setDate(now.getDate() - Math.floor(days / 2));
+    const startDate = new Date();
+    startDate.setDate(now.getDate() - days);
+
+    const midStr = midDate.toISOString().split('T')[0];
+    const startStr = startDate.toISOString().split('T')[0];
+
+    let enhFilter = '';
+    const params1 = [canonical, displayUnit, startStr, midStr];
+    const params2 = [canonical, displayUnit, midStr];
+    if (enhancement > 0) {
+      enhFilter = ' AND enhancement = ?';
+      params1.push(enhancement);
+      params2.push(enhancement);
+    }
+
+    // 전반기 (start ~ mid)
+    const r1 = this.db.exec(
+      `SELECT AVG(price), COUNT(*) FROM trades
+       WHERE canonical_name = ? AND price_unit = ? AND trade_date >= ? AND trade_date < ?
+       AND trade_type = 'sell' AND trade_type != 'exchange'${enhFilter}`,
+      params1
+    );
+    // 후반기 (mid ~ now)
+    const r2 = this.db.exec(
+      `SELECT AVG(price), COUNT(*) FROM trades
+       WHERE canonical_name = ? AND price_unit = ? AND trade_date >= ?
+       AND trade_type = 'sell' AND trade_type != 'exchange'${enhFilter}`,
+      params2
+    );
+
+    const avg1 = r1.length > 0 && r1[0].values[0][0] !== null ? r1[0].values[0][0] : null;
+    const cnt1 = r1.length > 0 ? r1[0].values[0][1] : 0;
+    const avg2 = r2.length > 0 && r2[0].values[0][0] !== null ? r2[0].values[0][0] : null;
+    const cnt2 = r2.length > 0 ? r2[0].values[0][1] : 0;
+
+    if (avg1 === null || avg2 === null || cnt1 < 3 || cnt2 < 3) return null;
+
+    const change = ((avg2 - avg1) / avg1) * 100;
+    return { change: Math.round(change * 10) / 10, avg1: Math.round(avg1 * 10) / 10, avg2: Math.round(avg2 * 10) / 10, cnt1, cnt2 };
+  }
+
+  /**
    * 이상치 제거 평균 (상하위 10% 제외)
    */
   _trimmedMean(prices) {
@@ -1215,6 +1296,15 @@ class TradeService {
       }
     }
 
+    // 가격 추이 (전반 vs 후반)
+    const mainUnit = hasGjData ? 'gj' : (Object.keys(unitLabels).find(k => k !== 'gj') || 'gj');
+    const trend = this._calcTrend(canonical, 0, days, mainUnit);
+    if (trend) {
+      const arrow = trend.change > 0 ? '📈' : trend.change < 0 ? '📉' : '➡️';
+      const sign = trend.change > 0 ? '+' : '';
+      lines.push(`\n${arrow} 추이: ${sign}${trend.change}% (전반 ${trend.avg1} → 후반 ${trend.avg2})`);
+    }
+
     lines.push('');
     if (!onlyNoEnhancement) {
       lines.push('💡 강화별 상세: !가격 5강 ' + canonical.substring(0, 4));
@@ -1421,6 +1511,16 @@ class TradeService {
         const pStr = p % 1 === 0 ? p.toString() : (Math.round(p * 100) / 100).toString();
         lines.push(`💰 개당 환산: ~${pStr}어둠돈 (${crossVal.bulkUnit} 기준)`);
       }
+      lines.push('');
+    }
+
+    // 가격 추이 (전반 vs 후반)
+    const trendUnit = hasGj ? 'gj' : (Object.keys(unitLabels).find(k => k !== 'gj') || 'gj');
+    const trend = this._calcTrend(canonical, enhancement, days, trendUnit);
+    if (trend) {
+      const arrow = trend.change > 0 ? '📈' : trend.change < 0 ? '📉' : '➡️';
+      const sign = trend.change > 0 ? '+' : '';
+      lines.push(`${arrow} 추이: ${sign}${trend.change}% (전반 ${trend.avg1} → 후반 ${trend.avg2})`);
       lines.push('');
     }
 
