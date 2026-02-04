@@ -1101,6 +1101,74 @@ class TradeService {
     return this.parseMessage(fullText, senderInfo, currentDate, msg.time);
   }
 
+  // ── 데이터 정리 ────────────────────────────────────────
+
+  /**
+   * LOD_DB 기반 거래 데이터 정리
+   * - canonical_name이 LOD_DB에도 별칭에도 없는 항목 삭제
+   * - sinceDate: 이 날짜 이후 데이터만 정리 (없으면 전체)
+   */
+  cleanupTrades(sinceDate) {
+    if (!this.initialized) return { success: false, message: 'not initialized' };
+    if (this.knownItems.size === 0) return { success: false, message: 'LOD_DB not loaded' };
+
+    // 별칭 정식명 세트
+    const aliasCanonicals = new Set(this.aliasMap.values());
+
+    // 유효한 이름인지 체크
+    const isValid = (name) => {
+      if (!name) return false;
+      if (this.knownItems.has(name)) return true;
+      if (aliasCanonicals.has(name)) return true;
+      // LOD_DB에서 부분매칭 (2글자 이상 매칭)
+      for (const item of this.knownItems) {
+        if (item.includes(name) && name.length >= 3) return true;
+        if (name.includes(item) && item.length >= 3) return true;
+      }
+      return false;
+    };
+
+    // 정리 대상 조회
+    let sql = `SELECT DISTINCT canonical_name, COUNT(*) as cnt FROM trades`;
+    if (sinceDate) {
+      sql += ` WHERE trade_date >= '${sinceDate}'`;
+    }
+    sql += ` GROUP BY canonical_name`;
+
+    const result = this.db.exec(sql);
+    if (result.length === 0) return { success: true, removed: 0, kept: 0 };
+
+    let removed = 0;
+    let kept = 0;
+    const removedNames = [];
+
+    for (const row of result[0].values) {
+      const [name, cnt] = row;
+      if (isValid(name)) {
+        kept++;
+      } else {
+        // 삭제
+        if (sinceDate) {
+          this.db.run(`DELETE FROM trades WHERE canonical_name = ? AND trade_date >= ?`, [name, sinceDate]);
+        } else {
+          this.db.run(`DELETE FROM trades WHERE canonical_name = ?`, [name]);
+        }
+        removed++;
+        removedNames.push(`${name}(${cnt}건)`);
+      }
+    }
+
+    this.saveDb();
+
+    return {
+      success: true,
+      removed,
+      kept,
+      removedCount: removedNames.length,
+      examples: removedNames.slice(0, 20),
+    };
+  }
+
   // ── 별칭 관리 ────────────────────────────────────────
 
   addAlias(alias, canonicalName, category) {

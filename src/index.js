@@ -544,6 +544,18 @@ app.get('/api/trade/stats', async (req, res) => {
   }
 });
 
+// 데이터 정리 (LOD_DB 기반)
+app.post('/api/trade/cleanup', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { since_date } = req.body || {};
+    const result = tradeService.cleanupTrades(since_date);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 별칭 추가
 app.post('/api/trade/alias', async (req, res) => {
   try {
@@ -723,10 +735,48 @@ async function runCheck(type, webhookUrl) {
   }
 }
 
+// 거래 데이터 자동 정리 스케줄러 (매일 새벽 4시)
+function startTradeCleanupScheduler() {
+  const checked = new Set();
+
+  setInterval(async () => {
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    const dateKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+
+    if (hour === 4 && minute === 0 && !checked.has(dateKey)) {
+      checked.add(dateKey);
+
+      // 어제 날짜 계산
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const sinceDate = yesterday.toISOString().split('T')[0];
+
+      console.log(`[TradeCleanup] 일일 정리 시작 (${sinceDate})`);
+      try {
+        const result = tradeService.cleanupTrades(sinceDate);
+        console.log(`[TradeCleanup] 완료: ${result.removed}개 제거, ${result.kept}개 유지`);
+        if (result.examples && result.examples.length > 0) {
+          console.log(`[TradeCleanup] 제거 예시: ${result.examples.slice(0, 5).join(', ')}`);
+        }
+      } catch (error) {
+        console.error(`[TradeCleanup] 오류:`, error.message);
+      }
+
+      // 오래된 키 정리
+      if (checked.size > 60) checked.clear();
+    }
+  }, 60 * 1000);
+
+  console.log(`[TradeCleanup] 매일 04:00 자동 정리 스케줄 등록`);
+}
+
 app.listen(PORT, () => {
   console.log(`KakaoTalk Bot server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   startNoticeScheduler();
+  startTradeCleanupScheduler();
 });
 
 // 프로세스 종료 시 DB 저장

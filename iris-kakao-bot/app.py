@@ -446,6 +446,39 @@ def handle_admin_command(msg, sender_id, room_id=None):
     if msg.startswith("!별칭"):
         return "사용법:\n!별칭 추가 [줄임말] [정식명]\n!별칭 삭제 [줄임말]\n!별칭 목록"
 
+    # ── 가격 데이터 정리 ──
+    if msg.startswith("!가격정리"):
+        parts = msg.split()
+        since_date = parts[1] if len(parts) >= 2 else None
+        try:
+            payload = {}
+            if since_date:
+                payload["since_date"] = since_date
+            resp = requests.post(
+                f"{WIKIBOT_URL}/api/trade/cleanup",
+                json=payload,
+                timeout=30,
+            )
+            data = resp.json()
+            if data.get("success"):
+                lines = [
+                    "[가격 데이터 정리 완료]",
+                    f"· 제거: {data.get('removed', 0)}개 항목",
+                    f"· 유지: {data.get('kept', 0)}개 항목",
+                ]
+                examples = data.get("examples", [])
+                if examples:
+                    lines.append(f"\n제거된 항목:")
+                    for ex in examples[:10]:
+                        lines.append(f"  - {ex}")
+                    if len(examples) > 10:
+                        lines.append(f"  ... 외 {len(examples) - 10}개")
+                return "\n".join(lines)
+            return data.get("message", "정리 실패")
+        except Exception as e:
+            logger.error(f"가격 정리 오류: {e}")
+            return "가격 데이터 정리 중 오류가 발생했습니다."
+
     if msg.startswith("!서버재시작"):
         try:
             resp = requests.post(
@@ -582,7 +615,7 @@ def webhook():
             response_msg = f"[방 정보]\nroom: {room}\nchat_id: {chat_id}\nsender: {sender}\nuser_id: {user_id}"
 
         # 관리자 명령 (DM 또는 그룹)
-        elif msg_stripped.startswith("!관리자등록") or msg_stripped.startswith("!닉변감지") or msg_stripped.startswith("!닉변이력") or msg_stripped.startswith("!가격설정") or msg_stripped.startswith("!별칭"):
+        elif msg_stripped.startswith("!관리자등록") or msg_stripped.startswith("!닉변감지") or msg_stripped.startswith("!닉변이력") or msg_stripped.startswith("!가격설정") or msg_stripped.startswith("!별칭") or msg_stripped.startswith("!가격정리"):
             result = handle_admin_command(msg_stripped, user_id, room_id=chat_id)
             if result:
                 response_msg = result
@@ -693,6 +726,12 @@ def webhook():
   예: !별칭 추가 강세 강화된세피어링
 !별칭 삭제 [줄임말]
 !별칭 목록
+
+[데이터 관리]
+!가격정리 - 전체 데이터 정리 (LOD_DB 검증)
+!가격정리 [날짜] - 특정일 이후 정리
+  예: !가격정리 2026-02-03
+  (매일 04:00 자동 실행)
 
 [닉네임 감시]
 !닉변감지 추가/제거/목록
