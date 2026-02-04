@@ -6,10 +6,12 @@ const readline = require('readline');
 class TradeService {
   constructor() {
     this.dbPath = path.join(__dirname, '../../trade.db');
+    this.lodDbPath = path.join(__dirname, '../../LOD_DB/lod.db');
     this.db = null;
     this.initialized = false;
     this.saveInterval = null;
     this.aliasMap = new Map(); // alias → canonical_name
+    this.knownItems = new Set(); // LOD_DB에서 로드한 아이템명
   }
 
   async initialize() {
@@ -28,6 +30,7 @@ class TradeService {
       this._createTables();
       this._seedAliases();
       this._buildAliasIndex();
+      this._loadLodItems(SQL);
       this.initialized = true;
 
       this.saveInterval = setInterval(() => this.saveDb(), 5 * 60 * 1000);
@@ -36,6 +39,47 @@ class TradeService {
       console.error('Failed to initialize TradeService:', error);
       throw error;
     }
+  }
+
+  /**
+   * LOD_DB에서 아이템명 로드
+   */
+  _loadLodItems(SQL) {
+    try {
+      if (!fs.existsSync(this.lodDbPath)) {
+        console.log('LOD_DB not found, skipping item validation');
+        return;
+      }
+      const buf = fs.readFileSync(this.lodDbPath);
+      const lodDb = new SQL.Database(buf);
+      const result = lodDb.exec(`SELECT DISTINCT DisplayName FROM items`);
+      if (result.length > 0) {
+        for (const row of result[0].values) {
+          const name = row[0];
+          this.knownItems.add(name);
+          // 레벨 접미사 제거한 베이스명도 추가 (나겔링반지(Lev1) → 나겔링반지)
+          const base = name.replace(/\(Lev\d+\)/, '').trim();
+          if (base !== name) this.knownItems.add(base);
+        }
+      }
+      lodDb.close();
+      console.log(`LOD_DB loaded: ${this.knownItems.size} item names`);
+    } catch (e) {
+      console.error('Failed to load LOD_DB:', e);
+    }
+  }
+
+  /**
+   * 알려진 게임 아이템인지 확인
+   */
+  isKnownItem(name) {
+    if (this.knownItems.size === 0) return true; // LOD_DB 없으면 통과
+    if (this.knownItems.has(name)) return true;
+    // 별칭의 정식명도 허용
+    for (const canonical of this.aliasMap.values()) {
+      if (canonical === name) return true;
+    }
+    return false;
   }
 
   _createTables() {
@@ -676,22 +720,38 @@ class TradeService {
       if (a.includes(searchTerm) && searchTerm.length >= 2) return c;
     }
 
-    // 3. DB에서 canonical_name 직접 검색
-    const result = this.db.exec(
-      `SELECT DISTINCT canonical_name FROM trades WHERE canonical_name LIKE ? LIMIT 1`,
-      [`%${searchTerm}%`]
-    );
-    if (result.length > 0 && result[0].values.length > 0) {
-      return result[0].values[0][0];
+    // 3. LOD_DB 아이템명 직접 매칭
+    if (this.knownItems.has(searchTerm)) return searchTerm;
+    for (const itemName of this.knownItems) {
+      if (itemName.includes(searchTerm) && searchTerm.length >= 2) return itemName;
     }
 
-    // 4. item_name 검색
-    const result2 = this.db.exec(
-      `SELECT DISTINCT canonical_name FROM trades WHERE item_name LIKE ? LIMIT 1`,
+    // 4. DB에서 canonical_name 검색 (LOD_DB 검증된 것 우선)
+    const result = this.db.exec(
+      `SELECT DISTINCT canonical_name, COUNT(*) as cnt FROM trades
+       WHERE canonical_name LIKE ? GROUP BY canonical_name ORDER BY cnt DESC LIMIT 5`,
       [`%${searchTerm}%`]
     );
-    if (result2.length > 0 && result2[0].values.length > 0) {
-      return result2[0].values[0][0];
+    if (result.length > 0) {
+      // LOD_DB에 있는 아이템 우선
+      for (const row of result[0].values) {
+        if (this.isKnownItem(row[0])) return row[0];
+      }
+      // 없으면 거래 건수 가장 많은 것 (최소 5건 이상)
+      if (result[0].values[0][1] >= 5) return result[0].values[0][0];
+    }
+
+    // 5. item_name 검색
+    const result2 = this.db.exec(
+      `SELECT DISTINCT canonical_name, COUNT(*) as cnt FROM trades
+       WHERE item_name LIKE ? GROUP BY canonical_name ORDER BY cnt DESC LIMIT 5`,
+      [`%${searchTerm}%`]
+    );
+    if (result2.length > 0) {
+      for (const row of result2[0].values) {
+        if (this.isKnownItem(row[0])) return row[0];
+      }
+      if (result2[0].values[0][1] >= 5) return result2[0].values[0][0];
     }
 
     return null;
@@ -708,14 +768,24 @@ class TradeService {
     return result[0].values.map(r => r[0]);
   }
 
+  /**
+   * 이상치 제거 평균 (상하위 10% 제외)
+   */
+  _trimmedMean(prices) {
+    if (prices.length === 0) return 0;
+    if (prices.length <= 4) {
+      // 4건 이하면 그냥 평균
+      return prices.reduce((a, b) => a + b, 0) / prices.length;
+    }
+    const sorted = [...prices].sort((a, b) => a - b);
+    const trimCount = Math.max(1, Math.floor(sorted.length * 0.1));
+    const trimmed = sorted.slice(trimCount, sorted.length - trimCount);
+    return trimmed.reduce((a, b) => a + b, 0) / trimmed.length;
+  }
+
   _aggregateStats(canonicalName, enhancement, dateLimitStr) {
-    let sql = `SELECT
-      price_unit, trade_type,
-      COUNT(*) as count,
-      AVG(price) as avg_price,
-      MIN(price) as min_price,
-      MAX(price) as max_price
-      FROM trades
+    // 개별 가격 조회 (이상치 제거용)
+    let sql = `SELECT price_unit, trade_type, price FROM trades
       WHERE canonical_name = ? AND trade_date >= ?`;
     const params = [canonicalName, dateLimitStr];
 
@@ -723,43 +793,53 @@ class TradeService {
       sql += ` AND enhancement = ?`;
       params.push(enhancement);
     }
-
-    sql += ` GROUP BY price_unit, trade_type ORDER BY count DESC`;
+    sql += ` ORDER BY price`;
 
     const result = this.db.exec(sql, params);
     if (result.length === 0 || result[0].values.length === 0) return null;
 
     const stats = {};
     let totalCount = 0;
+
+    // 가격 단위+거래타입별 가격 수집
+    const priceGroups = {};
     for (const row of result[0].values) {
-      const [pu, tradeType, cnt, avg, min, max] = row;
+      const [pu, tradeType, price] = row;
+      const key = `${pu}_${tradeType || 'unknown'}`;
+      if (!priceGroups[key]) priceGroups[key] = { pu, tradeType, prices: [] };
+      priceGroups[key].prices.push(price);
+    }
+
+    for (const group of Object.values(priceGroups)) {
+      const { pu, tradeType, prices } = group;
       if (!stats[pu]) {
         stats[pu] = {
           count: 0, avg: 0, min: Infinity, max: -Infinity,
           sellAvg: null, sellCount: 0, buyAvg: null, buyCount: 0,
-          _sum: 0
+          _allPrices: []
         };
       }
       const s = stats[pu];
-      s.count += cnt;
-      s._sum += avg * cnt;
-      s.min = Math.min(s.min, min);
-      s.max = Math.max(s.max, max);
+      const trimmedAvg = Math.round(this._trimmedMean(prices) * 10) / 10;
+      s.count += prices.length;
+      s._allPrices.push(...prices);
+      s.min = Math.min(s.min, Math.min(...prices));
+      s.max = Math.max(s.max, Math.max(...prices));
       if (tradeType === 'sell') {
-        s.sellAvg = Math.round(avg * 10) / 10;
-        s.sellCount = cnt;
+        s.sellAvg = trimmedAvg;
+        s.sellCount = prices.length;
       } else if (tradeType === 'buy') {
-        s.buyAvg = Math.round(avg * 10) / 10;
-        s.buyCount = cnt;
+        s.buyAvg = trimmedAvg;
+        s.buyCount = prices.length;
       }
-      totalCount += cnt;
+      totalCount += prices.length;
     }
 
-    // 전체 평균 계산
+    // 전체 이상치 제거 평균
     for (const pu of Object.keys(stats)) {
       const s = stats[pu];
-      s.avg = Math.round(s._sum / s.count * 10) / 10;
-      delete s._sum;
+      s.avg = Math.round(this._trimmedMean(s._allPrices) * 10) / 10;
+      delete s._allPrices;
     }
 
     return { byUnit: stats, count: totalCount };
@@ -854,18 +934,13 @@ class TradeService {
       else if (entry.lvl > 0) label = `${entry.enh}강 ${entry.lvl}렙`;
       else label = `${entry.enh}강`;
 
-      const totalAvg = Math.round(data.total.sum / data.total.count * 10) / 10;
-      const parts = [`${label}:`];
-
       if (data.sell && data.buy) {
-        parts.push(`판${data.sell.avg}/구${data.buy.avg}`);
+        lines.push(`· ${label}: [판]${data.sell.avg} [구]${data.buy.avg} (${data.total.count}건)`);
       } else if (data.sell) {
-        parts.push(`판매 ${data.sell.avg}`);
+        lines.push(`· ${label}: [판]${data.sell.avg} (${data.total.count}건)`);
       } else if (data.buy) {
-        parts.push(`구매 ${data.buy.avg}`);
+        lines.push(`· ${label}: [구]${data.buy.avg} (${data.total.count}건)`);
       }
-      parts.push(`${data.total.count}건`);
-      lines.push(`· ${parts.join(' ')}`);
     }
 
     if (!hasGj) {
@@ -881,17 +956,13 @@ class TradeService {
         else if (entry.lvl > 0) label = `${entry.enh}강 ${entry.lvl}렙`;
         else label = `${entry.enh}강`;
 
-        const totalAvg = Math.round(data.total.sum / data.total.count * 10) / 10;
-        const parts = [`${label}:`];
         if (data.sell && data.buy) {
-          parts.push(`판${data.sell.avg}/구${data.buy.avg}`);
+          lines.push(`· ${label}: [판]${data.sell.avg} [구]${data.buy.avg} (${data.total.count}건)`);
         } else if (data.sell) {
-          parts.push(`판매 ${data.sell.avg}`);
+          lines.push(`· ${label}: [판]${data.sell.avg} (${data.total.count}건)`);
         } else if (data.buy) {
-          parts.push(`구매 ${data.buy.avg}`);
+          lines.push(`· ${label}: [구]${data.buy.avg} (${data.total.count}건)`);
         }
-        parts.push(`${data.total.count}건`);
-        lines.push(`· ${parts.join(' ')}`);
       }
     }
 
@@ -913,12 +984,12 @@ class TradeService {
       const label = unitLabels[unit] || unit;
       lines.push(`${label} 기준 (최근 ${days}일)`);
       if (data.sellAvg !== null && data.buyAvg !== null) {
-        lines.push(`· 판매 평균: ${data.sellAvg} (${data.sellCount}건)`);
-        lines.push(`· 구매 평균: ${data.buyAvg} (${data.buyCount}건)`);
+        lines.push(`· [판] 평균 ${data.sellAvg} (${data.sellCount}건)`);
+        lines.push(`· [구] 평균 ${data.buyAvg} (${data.buyCount}건)`);
       } else if (data.sellAvg !== null) {
-        lines.push(`· 판매 평균: ${data.sellAvg} (${data.sellCount}건)`);
+        lines.push(`· [판] 평균 ${data.sellAvg} (${data.sellCount}건)`);
       } else if (data.buyAvg !== null) {
-        lines.push(`· 구매 평균: ${data.buyAvg} (${data.buyCount}건)`);
+        lines.push(`· [구] 평균 ${data.buyAvg} (${data.buyCount}건)`);
       } else {
         lines.push(`· 평균: ${data.avg}`);
       }
@@ -933,11 +1004,10 @@ class TradeService {
     if (recentTrades.length > 0) {
       lines.push('최근 시세');
       for (const t of recentTrades) {
-        const typeLabel = t.trade_type === 'sell' ? '판매' : t.trade_type === 'buy' ? '구매' : '교환';
+        const typeTag = t.trade_type === 'sell' ? '[판]' : t.trade_type === 'buy' ? '[구]' : '[교]';
         const unitLabel = unitLabels[t.price_unit] || '';
         const dateShort = t.trade_date ? t.trade_date.substring(5).replace('-', '/') : '';
-        const enhLabel = t.enhancement > 0 ? `${t.enhancement}강 ` : '';
-        lines.push(`· ${typeLabel} ${enhLabel}${t.price}${unitLabel} (${dateShort})`);
+        lines.push(`· ${typeTag} ${t.price}${unitLabel} (${dateShort})`);
       }
     }
 
