@@ -4,20 +4,25 @@ const bodyParser = require('body-parser');
 require('dotenv').config();
 
 const webhookController = require('./controllers/webhookController');
+const { router: nicknameController, setNicknameService } = require('./controllers/nicknameController');
 const { SearchService } = require('./services/searchService');
 const { CommunityService } = require('./services/communityService');
+const { NicknameService } = require('./services/nicknameService');
 const { rateLimiter, errorHandler } = require('./middleware');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const searchService = new SearchService();
 const communityService = new CommunityService();
+const nicknameService = new NicknameService();
 
 // 검색 서비스 초기화
 let initialized = false;
 const initializeService = async () => {
   if (!initialized) {
     await searchService.initialize();
+    await nicknameService.initialize();
+    setNicknameService(nicknameService);
     initialized = true;
   }
 };
@@ -331,6 +336,7 @@ app.post('/ask/community', async (req, res) => {
   }
 });
 
+app.use('/api/nickname', nicknameController);
 app.use('/webhook', rateLimiter, webhookController);
 
 app.get('/health', (req, res) => {
@@ -346,4 +352,14 @@ app.use(errorHandler);
 app.listen(PORT, () => {
   console.log(`KakaoTalk Bot server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+});
+
+// 프로세스 종료 시 닉네임 DB 저장
+process.on('SIGINT', () => {
+  nicknameService.close();
+  process.exit(0);
+});
+process.on('SIGTERM', () => {
+  nicknameService.close();
+  process.exit(0);
 });
