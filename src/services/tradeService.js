@@ -774,28 +774,77 @@ class TradeService {
   _findCanonicalName(searchTerm) {
     if (!searchTerm) return null;
 
-    // 1. 별칭 테이블 정확 매칭 → 바로 리턴
-    const alias = this.aliasMap.get(searchTerm);
-    if (alias) return alias;
+    // 검색 변형: 조사 "의" 제거 버전 (주작의반지 → 주작반지)
+    const stripped = searchTerm.replace(/의/g, '');
+    const searchVariants = stripped !== searchTerm && stripped.length >= 2
+      ? [searchTerm, stripped] : [searchTerm];
 
-    // 2. LOD_DB 아이템명 정확 매칭 → 바로 리턴 (별칭 부분매칭보다 우선)
-    if (this.knownItems.has(searchTerm)) return searchTerm;
+    // 1. 별칭 테이블 정확 매칭 → 바로 리턴
+    for (const term of searchVariants) {
+      const alias = this.aliasMap.get(term);
+      if (alias) return alias;
+    }
+
+    // 2. LOD_DB 아이템명 정확 매칭 → 거래 데이터 확인 후 리턴
+    if (this.knownItems.has(searchTerm)) {
+      const r = this.db.exec(
+        `SELECT COUNT(*) FROM trades WHERE canonical_name = ? AND trade_type != 'exchange'`,
+        [searchTerm]
+      );
+      if (r.length > 0 && r[0].values[0][0] > 0) return searchTerm;
+      // 거래 데이터 없으면 조사 제거 후 재시도 (주작의반지 → 주작반지)
+      if (stripped !== searchTerm) {
+        const altAlias = this.aliasMap.get(stripped);
+        if (altAlias) return altAlias;
+        if (this.knownItems.has(stripped)) {
+          const r2 = this.db.exec(
+            `SELECT COUNT(*) FROM trades WHERE canonical_name = ? AND trade_type != 'exchange'`,
+            [stripped]
+          );
+          if (r2.length > 0 && r2[0].values[0][0] > 0) return stripped;
+        }
+        // DB LIKE 검색
+        const dbAlt = this.db.exec(
+          `SELECT DISTINCT canonical_name, COUNT(*) as cnt FROM trades
+           WHERE canonical_name LIKE ? AND trade_type != 'exchange'
+           GROUP BY canonical_name ORDER BY cnt DESC LIMIT 1`,
+          [`%${stripped}%`]
+        );
+        if (dbAlt.length > 0 && dbAlt[0].values[0][1] >= 5) return dbAlt[0].values[0][0];
+      }
+      return searchTerm; // LOD_DB 이름 그대로 (시세 없음 표시됨)
+    }
 
     // 3. 별칭 부분 매칭 → 후보 수집 (별칭이 검색어를 포함하는 경우만)
     const aliasCandidates = new Set();
     for (const [a, c] of this.aliasMap) {
-      // 별칭이 검색어를 포함 (예: "주작의눈물" includes "주작의눈" → 해당 정식명 추가)
       if (a.includes(searchTerm) && searchTerm.length >= 2) aliasCandidates.add(c);
     }
     if (aliasCandidates.size === 1) return [...aliasCandidates][0];
 
-    // 4. LOD_DB 부분 매칭 → 후보 수집
+    // 4. LOD_DB 부분 매칭 + DB 검색 통합 (조사 제거 변형 포함)
     const lodCandidates = new Set();
     for (const itemName of this.knownItems) {
       if (itemName.includes(searchTerm) && searchTerm.length >= 2) lodCandidates.add(itemName);
     }
-    // 별칭 후보와 합치기
-    const allCandidates = new Set([...aliasCandidates, ...lodCandidates]);
+
+    // DB에서도 직접 검색 (조사 제거 변형 포함)
+    const dbCandidates = new Set();
+    for (const variant of searchVariants) {
+      const dbResult = this.db.exec(
+        `SELECT DISTINCT canonical_name, COUNT(*) as cnt FROM trades
+         WHERE canonical_name LIKE ? AND trade_type != 'exchange'
+         GROUP BY canonical_name ORDER BY cnt DESC LIMIT 10`,
+        [`%${variant}%`]
+      );
+      if (dbResult.length > 0) {
+        for (const row of dbResult[0].values) {
+          if (row[1] >= 2) dbCandidates.add(row[0]);
+        }
+      }
+    }
+
+    const allCandidates = new Set([...aliasCandidates, ...lodCandidates, ...dbCandidates]);
 
     // 후보가 1개면 바로 리턴
     if (allCandidates.size === 1) return [...allCandidates][0];
@@ -803,17 +852,20 @@ class TradeService {
     // 후보가 여러 개면 → 거래 데이터 있는 것만 필터 + 건수 기준 정렬
     if (allCandidates.size > 1) {
       const withTrades = [];
+      const seen = new Set();
       for (const name of allCandidates) {
         const r = this.db.exec(
           `SELECT COUNT(*) FROM trades WHERE canonical_name = ? AND trade_type != 'exchange'`,
           [name]
         );
         const cnt = r.length > 0 ? r[0].values[0][0] : 0;
-        if (cnt > 0) withTrades.push({ name, count: cnt });
+        if (cnt > 0 && !seen.has(name)) {
+          withTrades.push({ name, count: cnt });
+          seen.add(name);
+        }
       }
       if (withTrades.length === 1) return withTrades[0].name;
       if (withTrades.length > 1) {
-        // 여러 아이템에 거래 데이터 존재 → 후보 목록 리턴
         withTrades.sort((a, b) => b.count - a.count);
         return { multiple: withTrades.map(w => w.name) };
       }
@@ -821,39 +873,42 @@ class TradeService {
       return { multiple: [...allCandidates].slice(0, 10) };
     }
 
-    // 5. DB에서 canonical_name 검색 (LOD_DB 검증된 것 우선)
-    const result = this.db.exec(
-      `SELECT DISTINCT canonical_name, COUNT(*) as cnt FROM trades
-       WHERE canonical_name LIKE ? AND trade_type != 'exchange'
-       GROUP BY canonical_name ORDER BY cnt DESC LIMIT 10`,
-      [`%${searchTerm}%`]
-    );
-    if (result.length > 0) {
-      const known = result[0].values.filter(r => this.isKnownItem(r[0]));
-      if (known.length === 1) return known[0][0];
-      if (known.length > 1) return { multiple: known.map(r => r[0]) };
-      // LOD_DB에 없는 것 중 5건 이상만
-      const valid = result[0].values.filter(r => r[1] >= 5);
-      if (valid.length === 1) return valid[0][0];
-      if (valid.length > 1) return { multiple: valid.map(r => r[0]) };
-      if (result[0].values[0][1] >= 5) return result[0].values[0][0];
+    // 5. DB에서 canonical_name 검색 (조사 제거 변형 포함)
+    for (const variant of searchVariants) {
+      const result = this.db.exec(
+        `SELECT DISTINCT canonical_name, COUNT(*) as cnt FROM trades
+         WHERE canonical_name LIKE ? AND trade_type != 'exchange'
+         GROUP BY canonical_name ORDER BY cnt DESC LIMIT 10`,
+        [`%${variant}%`]
+      );
+      if (result.length > 0) {
+        const known = result[0].values.filter(r => this.isKnownItem(r[0]));
+        if (known.length === 1) return known[0][0];
+        if (known.length > 1) return { multiple: known.map(r => r[0]) };
+        const valid = result[0].values.filter(r => r[1] >= 5);
+        if (valid.length === 1) return valid[0][0];
+        if (valid.length > 1) return { multiple: valid.map(r => r[0]) };
+        if (result[0].values[0][1] >= 5) return result[0].values[0][0];
+      }
     }
 
     // 6. item_name 검색
-    const result2 = this.db.exec(
-      `SELECT DISTINCT canonical_name, COUNT(*) as cnt FROM trades
-       WHERE item_name LIKE ? AND trade_type != 'exchange'
-       GROUP BY canonical_name ORDER BY cnt DESC LIMIT 10`,
-      [`%${searchTerm}%`]
-    );
-    if (result2.length > 0) {
-      const known2 = result2[0].values.filter(r => this.isKnownItem(r[0]));
-      if (known2.length === 1) return known2[0][0];
-      if (known2.length > 1) return { multiple: known2.map(r => r[0]) };
-      const valid2 = result2[0].values.filter(r => r[1] >= 5);
-      if (valid2.length === 1) return valid2[0][0];
-      if (valid2.length > 1) return { multiple: valid2.map(r => r[0]) };
-      if (result2[0].values[0][1] >= 5) return result2[0].values[0][0];
+    for (const variant of searchVariants) {
+      const result2 = this.db.exec(
+        `SELECT DISTINCT canonical_name, COUNT(*) as cnt FROM trades
+         WHERE item_name LIKE ? AND trade_type != 'exchange'
+         GROUP BY canonical_name ORDER BY cnt DESC LIMIT 10`,
+        [`%${variant}%`]
+      );
+      if (result2.length > 0) {
+        const known2 = result2[0].values.filter(r => this.isKnownItem(r[0]));
+        if (known2.length === 1) return known2[0][0];
+        if (known2.length > 1) return { multiple: known2.map(r => r[0]) };
+        const valid2 = result2[0].values.filter(r => r[1] >= 5);
+        if (valid2.length === 1) return valid2[0][0];
+        if (valid2.length > 1) return { multiple: valid2.map(r => r[0]) };
+        if (result2[0].values[0][1] >= 5) return result2[0].values[0][0];
+      }
     }
 
     return null;
