@@ -134,7 +134,8 @@ class NicknameService {
     );
     this.saveDb();
 
-    return `[닉네임 변경 감지]\n${lastName} → ${senderName}`;
+    const now = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+    return `[닉네임 변경 감지]\n${lastName} → ${senderName}\n(${now})`;
   }
 
   /**
