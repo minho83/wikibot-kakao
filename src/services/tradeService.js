@@ -727,6 +727,23 @@ class TradeService {
     this.db.run('BEGIN TRANSACTION');
     try {
       for (const t of trades) {
+        // 같은 판매자가 같은 날 같은 아이템/강화/단위/거래타입으로 이미 등록했으면 가격만 업데이트 (시세 조작 방지)
+        if (t.seller_name) {
+          const existing = this.db.exec(
+            `SELECT id FROM trades WHERE seller_name = ? AND canonical_name = ? AND enhancement = ?
+             AND price_unit = ? AND trade_type = ? AND trade_date = ? LIMIT 1`,
+            [t.seller_name, t.canonical_name, t.enhancement, t.price_unit, t.trade_type, t.trade_date]
+          );
+          if (existing.length > 0 && existing[0].values.length > 0) {
+            // 기존 레코드 가격 업데이트
+            this.db.run(
+              `UPDATE trades SET price = ?, price_raw = ?, item_options = ?, message_time = ?, raw_message = ?
+               WHERE id = ?`,
+              [t.price, t.price_raw, t.item_options, t.message_time, rawMessage || null, existing[0].values[0][0]]
+            );
+            continue;
+          }
+        }
         this.db.run(
           `INSERT INTO trades (item_name, canonical_name, enhancement, item_level, item_options,
             trade_type, price, price_unit, price_raw, seller_name, server,
@@ -997,18 +1014,20 @@ class TradeService {
       params2.push(enhancement);
     }
 
-    // 전반기 (start ~ mid)
+    // 전반기 (start ~ mid) — seller 중복 제거
+    const dedup1 = this._dedupSubquery(
+      `canonical_name = ? AND price_unit = ? AND trade_date >= ? AND trade_date < ? AND trade_type = 'sell' AND trade_type != 'exchange'${enhFilter}${puFilter}`
+    );
     const r1 = this.db.exec(
-      `SELECT AVG(price), COUNT(*) FROM trades
-       WHERE canonical_name = ? AND price_unit = ? AND trade_date >= ? AND trade_date < ?
-       AND trade_type = 'sell' AND trade_type != 'exchange'${enhFilter}${puFilter}`,
+      `SELECT AVG(price), COUNT(*) FROM ${dedup1} t`,
       params1
     );
-    // 후반기 (mid ~ now)
+    // 후반기 (mid ~ now) — seller 중복 제거
+    const dedup2 = this._dedupSubquery(
+      `canonical_name = ? AND price_unit = ? AND trade_date >= ? AND trade_type = 'sell' AND trade_type != 'exchange'${enhFilter}${puFilter}`
+    );
     const r2 = this.db.exec(
-      `SELECT AVG(price), COUNT(*) FROM trades
-       WHERE canonical_name = ? AND price_unit = ? AND trade_date >= ?
-       AND trade_type = 'sell' AND trade_type != 'exchange'${enhFilter}${puFilter}`,
+      `SELECT AVG(price), COUNT(*) FROM ${dedup2} t`,
       params2
     );
 
@@ -1058,16 +1077,15 @@ class TradeService {
 
   _aggregateStats(canonicalName, enhancement, dateLimitStr) {
     const puCase = this._pricingUnitSqlCase();
-    let sql = `SELECT price_unit, trade_type, price, ${puCase} as pricing_unit
-      FROM trades
-      WHERE canonical_name = ? AND trade_date >= ? AND trade_type != 'exchange'`;
+    let where = `canonical_name = ? AND trade_date >= ? AND trade_type != 'exchange'`;
     const params = [canonicalName, dateLimitStr];
 
     if (enhancement !== null && enhancement !== undefined && enhancement > 0) {
-      sql += ` AND enhancement = ?`;
+      where += ` AND enhancement = ?`;
       params.push(enhancement);
     }
-    sql += ` ORDER BY price`;
+    const dedup = this._dedupSubquery(where);
+    let sql = `SELECT price_unit, trade_type, price, ${puCase} as pricing_unit FROM ${dedup} t ORDER BY price`;
 
     const result = this.db.exec(sql, params);
     if (result.length === 0 || result[0].values.length === 0) return null;
@@ -1150,15 +1168,24 @@ class TradeService {
     }));
   }
 
+  /**
+   * 동일 판매자 중복 제거 서브쿼리 (같은 사람이 같은 날 같은 아이템 반복 등록 → 최신 1건만)
+   */
+  _dedupSubquery(whereClause) {
+    return `(SELECT * FROM trades WHERE ${whereClause}
+      GROUP BY COALESCE(NULLIF(seller_name,''), id), canonical_name, enhancement, price_unit, trade_type, trade_date
+      HAVING id = MAX(id))`;
+  }
+
   _formatEnhancementSummary(canonical, dateLimitStr, days) {
     const puCase = this._pricingUnitSqlCase();
+    const dedup = this._dedupSubquery(`canonical_name = ? AND trade_date >= ? AND trade_type != 'exchange'`);
 
     const result = this.db.exec(`
       SELECT enhancement, item_level, price_unit, trade_type, ${puCase} as pricing_unit,
         COUNT(*) as cnt, AVG(price) as avg_price,
         MIN(price) as min_price, MAX(price) as max_price
-      FROM trades
-      WHERE canonical_name = ? AND trade_date >= ? AND trade_type != 'exchange'
+      FROM ${dedup} t
       GROUP BY enhancement, item_level, price_unit, trade_type, pricing_unit
       ORDER BY enhancement ASC, item_level ASC, cnt DESC
     `, [canonical, dateLimitStr]);
