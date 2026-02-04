@@ -1296,13 +1296,15 @@ class TradeService {
       }
     }
 
-    // 가격 추이 (전반 vs 후반)
-    const mainUnit = hasGjData ? 'gj' : (Object.keys(unitLabels).find(k => k !== 'gj') || 'gj');
-    const trend = this._calcTrend(canonical, 0, days, mainUnit);
-    if (trend) {
-      const arrow = trend.change > 0 ? '📈' : trend.change < 0 ? '📉' : '➡️';
-      const sign = trend.change > 0 ? '+' : '';
-      lines.push(`\n${arrow} 추이: ${sign}${trend.change}% (전반 ${trend.avg1} → 후반 ${trend.avg2})`);
+    // 가격 추이: 강화 미지정(요약 뷰)에서는 노강 아이템만 표시
+    if (onlyNoEnhancement) {
+      const mainUnit = hasGjData ? 'gj' : (Object.keys(unitLabels).find(k => k !== 'gj') || 'gj');
+      const trend = this._calcTrend(canonical, 0, days, mainUnit);
+      if (trend) {
+        const arrow = trend.change > 0 ? '📈' : trend.change < 0 ? '📉' : '➡️';
+        const sign = trend.change > 0 ? '+' : '';
+        lines.push(`\n${arrow} 추이: ${sign}${trend.change}% (전반 ${trend.avg1} → 후반 ${trend.avg2})`);
+      }
     }
 
     lines.push('');
