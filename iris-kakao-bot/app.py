@@ -155,11 +155,13 @@ def check_trade_room(chat_id):
             timeout=5,
         )
         data = resp.json()
-        room = data.get("room") if data.get("success") else None
-        _room_cache[chat_id] = room
+        if not data.get("success"):
+            return None  # 서버 오류 시 캐시하지 않음
+        room = data.get("room")
+        _room_cache[chat_id] = room  # 성공 응답만 캐시 (None 포함 = 미등록 방)
         return room
     except Exception:
-        return None
+        return None  # 통신 오류 시 캐시하지 않음 → 다음 요청에서 재시도
 
 
 def collect_trade_message(msg, sender, chat_id):
