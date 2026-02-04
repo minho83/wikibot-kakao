@@ -2,6 +2,8 @@
 # wikibot-kakao 자동 배포 스크립트
 # cron으로 주기적 실행: 변경 있을 때만 빌드/재시작
 
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
 REPO_DIR="$HOME/wikibot-kakao"
 IMAGE_NAME="wikibot-kakao"
 CONTAINER_NAME="wikibot-server"
