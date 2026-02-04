@@ -12,6 +12,7 @@ class TradeService {
     this.saveInterval = null;
     this.aliasMap = new Map(); // alias → canonical_name
     this.knownItems = new Set(); // LOD_DB에서 로드한 아이템명
+    this.bundleItems = new Set(); // BundleMaxCount > 0인 묶음거래 아이템 (소모품/재료)
     this.rejectedPatterns = new Set(); // cleanup에서 학습된 거부 패턴
   }
 
@@ -54,18 +55,24 @@ class TradeService {
       }
       const buf = fs.readFileSync(this.lodDbPath);
       const lodDb = new SQL.Database(buf);
-      const result = lodDb.exec(`SELECT DISTINCT DisplayName FROM items`);
+      // DisplayName + BundleMaxCount 로드 (묶음거래 가능 아이템 구분)
+      const result = lodDb.exec(`SELECT DISTINCT DisplayName, MAX(CAST(BundleMaxCount AS INTEGER)) as bmc FROM items GROUP BY DisplayName`);
       if (result.length > 0) {
         for (const row of result[0].values) {
           const name = row[0];
+          const bundleMax = row[1] || 0;
           this.knownItems.add(name);
+          if (bundleMax > 0) this.bundleItems.add(name);
           // 레벨 접미사 제거한 베이스명도 추가 (나겔링반지(Lev1) → 나겔링반지)
           const base = name.replace(/\(Lev\d+\)/, '').trim();
-          if (base !== name) this.knownItems.add(base);
+          if (base !== name) {
+            this.knownItems.add(base);
+            if (bundleMax > 0) this.bundleItems.add(base);
+          }
         }
       }
       lodDb.close();
-      console.log(`LOD_DB loaded: ${this.knownItems.size} item names`);
+      console.log(`LOD_DB loaded: ${this.knownItems.size} item names (묶음아이템: ${this.bundleItems.size}개)`);
     } catch (e) {
       console.error('Failed to load LOD_DB:', e);
     }
@@ -1000,7 +1007,12 @@ class TradeService {
       return a.localeCompare(b);
     });
 
+    const isBundleItem = this.bundleItems.has(canonical);
+
     for (const pricingUnit of sortedPricingUnits) {
+      // 묶음 아이템(소모품/재료)은 단위 미상 데이터 제외
+      if (isBundleItem && pricingUnit === '') continue;
+
       const enhMap = pricingGroups[pricingUnit];
       const enhKeys = Object.keys(enhMap).sort((a, b) => {
         const [ae, al] = a.split('_').map(Number);
@@ -1072,8 +1084,14 @@ class TradeService {
       return a.localeCompare(b);
     });
 
+    const isBundleItem = this.bundleItems.has(canonical);
+
     for (const [unitKey, unitLabel] of Object.entries(unitLabels)) {
-      const relevantGroups = sortedPricingUnits.filter(pu => stats.groups[pu][unitKey]);
+      // 묶음 아이템(소모품/재료)은 단위 미상 데이터 제외
+      const relevantGroups = sortedPricingUnits.filter(pu => {
+        if (isBundleItem && pu === '') return false;
+        return stats.groups[pu][unitKey];
+      });
       if (relevantGroups.length === 0) continue;
 
       lines.push(`${unitLabel} 기준 (최근 ${days}일)`);
