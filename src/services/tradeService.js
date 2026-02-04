@@ -759,7 +759,7 @@ class TradeService {
       return { answer: `"${canonical}" ${enhancement}강의 최근 ${days}일 시세 데이터가 없습니다.`, sources: [] };
     }
 
-    return this._formatResponse(canonical, enhancement, stats, recentTrades, days);
+    return this._formatResponse(canonical, enhancement, stats, recentTrades, days, dateLimitStr);
   }
 
   _findCanonicalName(searchTerm) {
@@ -916,7 +916,10 @@ class TradeService {
     const puKeys = Object.keys(groups);
     const hasMixedUnits = puKeys.length > 1 || (puKeys.length === 1 && puKeys[0] !== '');
 
-    return { groups, totalCount, hasMixedUnits };
+    // ㄱㅈ 데이터 존재 여부
+    const hasGjData = puKeys.some(pk => groups[pk]['gj']);
+
+    return { groups, totalCount, hasMixedUnits, hasGjData };
   }
 
   _getRecentTrades(canonicalName, enhancement, dateLimitStr, limit) {
@@ -948,7 +951,6 @@ class TradeService {
   }
 
   _formatEnhancementSummary(canonical, dateLimitStr, days) {
-    const unitLabels = { gj: 'ㄱㅈ', won: '만원', eok: '억' };
     const puCase = this._pricingUnitSqlCase();
 
     const result = this.db.exec(`
@@ -965,12 +967,25 @@ class TradeService {
       return { answer: `"${canonical}"의 최근 ${days}일 시세 데이터가 없습니다.`, sources: [] };
     }
 
+    // ㄱㅈ(금전) 데이터 존재 여부 → 없으면 어둠돈
+    const hasGjData = result[0].values.some(row => row[2] === 'gj');
+    const unitLabels = hasGjData
+      ? { gj: 'ㄱㅈ', won: '만원', eok: '억' }
+      : { gj: 'ㄱㅈ', won: '어둠돈', eok: '어둠돈(억)' };
+
     // 단위 종류 파악
     const pricingUnitsSet = new Set();
     for (const row of result[0].values) {
       pricingUnitsSet.add(row[4] || '');
     }
     const hasMixedUnits = pricingUnitsSet.size > 1 || (pricingUnitsSet.size === 1 && !pricingUnitsSet.has(''));
+
+    // 강화 종류 파악 (노강만 있는지 체크)
+    const enhancementSet = new Set();
+    for (const row of result[0].values) {
+      enhancementSet.add(`${row[0] || 0}_${row[1] || 0}`);
+    }
+    const onlyNoEnhancement = enhancementSet.size === 1 && enhancementSet.has('0_0');
 
     // 단위별 → 강화+레벨별 그룹화
     const pricingGroups = {};
@@ -1012,12 +1027,7 @@ class TradeService {
     // 묶음 아이템: 벌크 단위에서 개당 환산가 계산 + 노이즈 개당 데이터 검증
     let crossVal = null;
     if (isBundleItem) {
-      // 먼저 displayUnit 결정 (gj 우선)
-      const anyGj = sortedPricingUnits.some(pu => {
-        const em = pricingGroups[pu];
-        return Object.values(em).some(e => e['gj']);
-      });
-      crossVal = this._crossValidateUnits(pricingGroups, anyGj ? 'gj' : 'won');
+      crossVal = this._crossValidateUnits(pricingGroups, hasGjData ? 'gj' : 'won');
     }
 
     for (const pricingUnit of sortedPricingUnits) {
@@ -1033,10 +1043,11 @@ class TradeService {
         return ae !== be ? ae - be : al - bl;
       });
 
-      // gj 우선, 없으면 won
+      // gj 우선, 없으면 won, 없으면 eok
       let displayUnit = 'gj';
       let hasData = enhKeys.some(key => enhMap[key][displayUnit]);
       if (!hasData) { displayUnit = 'won'; hasData = enhKeys.some(key => enhMap[key][displayUnit]); }
+      if (!hasData) { displayUnit = 'eok'; hasData = enhKeys.some(key => enhMap[key][displayUnit]); }
       if (!hasData) continue;
 
       if (hasMixedUnits) {
@@ -1049,34 +1060,62 @@ class TradeService {
         const data = entry[displayUnit];
         if (!data) continue;
 
-        let label;
-        if (entry.enh === 0 && entry.lvl === 0) label = '노강';
-        else if (entry.enh === 0 && entry.lvl > 0) label = `${entry.lvl}렙`;
-        else if (entry.lvl > 0) label = `${entry.enh}강 ${entry.lvl}렙`;
-        else label = `${entry.enh}강`;
+        // 노강만 있는 아이템은 강화 라벨 생략
+        let prefix;
+        if (onlyNoEnhancement) {
+          prefix = '';
+        } else {
+          let label;
+          if (entry.enh === 0 && entry.lvl === 0) label = '노강';
+          else if (entry.enh === 0 && entry.lvl > 0) label = `${entry.lvl}렙`;
+          else if (entry.lvl > 0) label = `${entry.enh}강 ${entry.lvl}렙`;
+          else label = `${entry.enh}강`;
+          prefix = `${label}: `;
+        }
 
         const sellStr = data.sell ? `[판]${data.sell.count > 1 ? '평균' : ''}${data.sell.avg}` : null;
         const buyStr = data.buy ? `[구]${data.buy.count > 1 ? '평균' : ''}${data.buy.avg}` : null;
 
         if (sellStr && buyStr) {
-          lines.push(`· ${label}: ${sellStr} ${buyStr} (${data.total.count}건)`);
+          lines.push(`· ${prefix}${sellStr} ${buyStr} (${data.total.count}건)`);
         } else if (sellStr) {
-          lines.push(`· ${label}: ${sellStr} (${data.total.count}건)`);
+          lines.push(`· ${prefix}${sellStr} (${data.total.count}건)`);
         } else if (buyStr) {
-          lines.push(`· ${label}: ${buyStr} (${data.total.count}건)`);
+          lines.push(`· ${prefix}${buyStr} (${data.total.count}건)`);
         }
       }
     }
 
     // 묶음 아이템: 벌크 단위에서 환산한 개당가 표시
     if (crossVal?.perUnitPrice) {
-      const priceStr = this._formatPerUnitPrice(crossVal.perUnitPrice);
-      lines.push(`\n💰 개당 환산: ${priceStr} (${crossVal.bulkUnit} 기준)`);
+      if (hasGjData) {
+        const priceStr = this._formatPerUnitPrice(crossVal.perUnitPrice);
+        lines.push(`\n💰 개당 환산: ${priceStr} (${crossVal.bulkUnit} 기준)`);
+      } else {
+        // 어둠돈은 원 환산 불가 → 어둠돈 단위로 표시
+        const p = crossVal.perUnitPrice;
+        const pStr = p % 1 === 0 ? p.toString() : (Math.round(p * 100) / 100).toString();
+        lines.push(`\n💰 개당 환산: ~${pStr}어둠돈 (${crossVal.bulkUnit} 기준)`);
+      }
     }
 
     lines.push('');
-    lines.push('💡 강화별 상세: !가격 5강 ' + canonical.substring(0, 4));
-    lines.push(`\n⚠ 거래오픈톡 ${days}일간 집계 (2건↑ 이상치제거 평균)\n거래에 유의하세요.`);
+    if (!onlyNoEnhancement) {
+      lines.push('💡 강화별 상세: !가격 5강 ' + canonical.substring(0, 4));
+    }
+
+    // 실제 집계 기간 표시
+    const dateRange = this.db.exec(
+      `SELECT MIN(trade_date), MAX(trade_date) FROM trades WHERE canonical_name = ? AND trade_date >= ? AND trade_type != 'exchange'`,
+      [canonical, dateLimitStr]
+    );
+    let periodStr = `${days}일간`;
+    if (dateRange.length > 0 && dateRange[0].values[0][0]) {
+      const from = dateRange[0].values[0][0].substring(5).replace('-', '/');
+      const to = dateRange[0].values[0][1].substring(5).replace('-', '/');
+      periodStr = `${from}~${to}`;
+    }
+    lines.push(`\n⚠ 거래오픈톡 ${periodStr} 집계 (2건↑ 이상치제거 평균)\n거래에 유의하세요.`);
 
     return { answer: lines.join('\n').trim(), sources: [] };
   }
@@ -1172,8 +1211,13 @@ class TradeService {
     return { perUnitPrice, bulkUnit: bestBulk.unit, shouldSkipRawPerUnit };
   }
 
-  _formatResponse(canonical, enhancement, stats, recentTrades, days) {
-    const unitLabels = { gj: 'ㄱㅈ', won: '만원', eok: '억' };
+  _formatResponse(canonical, enhancement, stats, recentTrades, days, dateLimitStr) {
+    // ㄱㅈ 없으면 어둠돈
+    const hasGj = stats.hasGjData;
+    const unitLabels = hasGj
+      ? { gj: 'ㄱㅈ', won: '만원', eok: '억' }
+      : { gj: 'ㄱㅈ', won: '어둠돈', eok: '어둠돈(억)' };
+
     const enhStr = enhancement > 0 ? ` ${enhancement}강` : '';
     let lines = [`[시세] ${canonical}${enhStr}`];
     lines.push('━━━━━━━━━━━━');
@@ -1190,22 +1234,22 @@ class TradeService {
     // 묶음 아이템: 벌크 단위에서 개당 환산 + 노이즈 개당 검증
     let crossVal = null;
     if (isBundleItem) {
-      // 벌크 단위 중 가장 거래 많은 것 찾기
+      const primaryUnit = hasGj ? 'gj' : 'won';
       let bestBulk = null;
       for (const pu of sortedPricingUnits) {
         const multiplier = this._getUnitMultiplier(pu);
         if (multiplier <= 1) continue;
-        const gjData = stats.groups[pu]?.gj;
-        if (!gjData) continue;
-        const avg = gjData.sellAvg || gjData.buyAvg;
-        if (avg !== null && (!bestBulk || gjData.count > bestBulk.count)) {
-          bestBulk = { unit: pu, multiplier, avg, count: gjData.count };
+        const unitData = stats.groups[pu]?.[primaryUnit];
+        if (!unitData) continue;
+        const avg = unitData.sellAvg || unitData.buyAvg;
+        if (avg !== null && (!bestBulk || unitData.count > bestBulk.count)) {
+          bestBulk = { unit: pu, multiplier, avg, count: unitData.count };
         }
       }
       if (bestBulk) {
         const perUnitPrice = Math.round((bestBulk.avg / bestBulk.multiplier) * 1000) / 1000;
         let shouldSkipRawPerUnit = false;
-        const perUnitData = stats.groups['개당']?.gj;
+        const perUnitData = stats.groups['개당']?.[primaryUnit];
         if (perUnitData) {
           const rawAvg = perUnitData.sellAvg || perUnitData.buyAvg;
           if (rawAvg !== null) {
@@ -1253,8 +1297,14 @@ class TradeService {
 
     // 묶음 아이템: 개당 환산가 표시
     if (crossVal?.perUnitPrice) {
-      const priceStr = this._formatPerUnitPrice(crossVal.perUnitPrice);
-      lines.push(`💰 개당 환산: ${priceStr} (${crossVal.bulkUnit} 기준)`);
+      if (hasGj) {
+        const priceStr = this._formatPerUnitPrice(crossVal.perUnitPrice);
+        lines.push(`💰 개당 환산: ${priceStr} (${crossVal.bulkUnit} 기준)`);
+      } else {
+        const p = crossVal.perUnitPrice;
+        const pStr = p % 1 === 0 ? p.toString() : (Math.round(p * 100) / 100).toString();
+        lines.push(`💰 개당 환산: ~${pStr}어둠돈 (${crossVal.bulkUnit} 기준)`);
+      }
       lines.push('');
     }
 
@@ -1263,14 +1313,28 @@ class TradeService {
       lines.push('최근 시세');
       for (const t of recentTrades) {
         const typeTag = t.trade_type === 'sell' ? '[판]' : t.trade_type === 'buy' ? '[구]' : '[교]';
-        const unitLabel = unitLabels[t.price_unit] || '';
+        const tUnitLabel = unitLabels[t.price_unit] || '';
         const dateShort = t.trade_date ? t.trade_date.substring(5).replace('-', '/') : '';
         const unitInfo = this._extractUnitFromOptions(t.item_options);
-        lines.push(`· ${typeTag} ${t.price}${unitLabel}${unitInfo} (${dateShort})`);
+        lines.push(`· ${typeTag} ${t.price}${tUnitLabel}${unitInfo} (${dateShort})`);
       }
     }
 
-    lines.push(`\n⚠ 거래오픈톡 ${days}일간 집계 (2건↑ 이상치제거 평균)\n거래에 유의하세요.`);
+    // 실제 집계 기간 표시
+    let enhFilter = '';
+    const dateParams = [canonical, dateLimitStr];
+    if (enhancement > 0) { enhFilter = ' AND enhancement = ?'; dateParams.push(enhancement); }
+    const dateRange = this.db.exec(
+      `SELECT MIN(trade_date), MAX(trade_date) FROM trades WHERE canonical_name = ? AND trade_date >= ? AND trade_type != 'exchange'${enhFilter}`,
+      dateParams
+    );
+    let periodStr = `${days}일간`;
+    if (dateRange.length > 0 && dateRange[0].values[0][0]) {
+      const from = dateRange[0].values[0][0].substring(5).replace('-', '/');
+      const to = dateRange[0].values[0][1].substring(5).replace('-', '/');
+      periodStr = `${from}~${to}`;
+    }
+    lines.push(`\n⚠ 거래오픈톡 ${periodStr} 집계 (2건↑ 이상치제거 평균)\n거래에 유의하세요.`);
 
     return { answer: lines.join('\n').trim(), sources: [] };
   }
