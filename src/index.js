@@ -382,7 +382,8 @@ app.post('/ask/notice', async (req, res) => {
     }
     recordCommunityRequest();
 
-    const result = await noticeService.getLatestNotice();
+    const { query } = req.body;
+    const result = await noticeService.getLatestNotice(query);
 
     if (result.success) {
       const data = result.data;
@@ -421,7 +422,8 @@ app.post('/ask/update', async (req, res) => {
     }
     recordCommunityRequest();
 
-    const result = await noticeService.getLatestUpdate();
+    const { query } = req.body;
+    const result = await noticeService.getLatestUpdate(query);
 
     if (result.success) {
       const data = result.data;

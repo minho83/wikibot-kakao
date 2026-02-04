@@ -63,10 +63,26 @@ class NicknameService {
       )
     `);
 
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS member_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        nickname TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        detected_at TEXT DEFAULT (datetime('now','localtime'))
+      )
+    `);
+
     // 인덱스 생성
     this.db.run(`
       CREATE INDEX IF NOT EXISTS idx_history_sender_room
       ON nickname_history(sender_id, room_id)
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_member_events_room
+      ON member_events(room_id)
     `);
   }
 
@@ -119,6 +135,33 @@ class NicknameService {
     this.saveDb();
 
     return `[닉네임 변경 감지]\n${lastName} → ${senderName}`;
+  }
+
+  /**
+   * 입퇴장 이벤트 기록 및 알림
+   * @returns {string} 알림 메시지 (감시 대상 아니면 빈 문자열)
+   */
+  logMemberEvent(roomId, userId, nickname, eventType) {
+    if (!this.initialized) return '';
+
+    // 감시 대상 방인지 확인
+    const roomResult = this.db.exec(
+      `SELECT room_id FROM nickname_config WHERE room_id = ? AND enabled = 1`,
+      [roomId]
+    );
+    if (roomResult.length === 0 || roomResult[0].values.length === 0) {
+      return '';
+    }
+
+    // 이벤트 기록
+    this.db.run(
+      `INSERT INTO member_events (room_id, user_id, nickname, event_type) VALUES (?, ?, ?, ?)`,
+      [roomId, userId, nickname, eventType]
+    );
+    this.saveDb();
+
+    const label = eventType === 'join' ? '입장' : '퇴장';
+    return `[${label}] ${nickname}`;
   }
 
   /**

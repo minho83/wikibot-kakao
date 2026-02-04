@@ -32,6 +32,30 @@ router.post('/check', (req, res) => {
   }
 });
 
+// POST /api/nickname/member-event - 입퇴장 이벤트 기록
+router.post('/member-event', (req, res) => {
+  try {
+    const { user_id, nickname, room_id, event_type } = req.body;
+
+    if (!user_id || !nickname || !room_id || !event_type) {
+      return res.status(400).json({
+        success: false,
+        message: 'user_id, nickname, room_id, event_type는 필수입니다.'
+      });
+    }
+
+    const notification = nicknameService.logMemberEvent(room_id, user_id, nickname, event_type);
+
+    res.json({
+      success: true,
+      notification: notification
+    });
+  } catch (error) {
+    console.error('Member event error:', error);
+    res.status(500).json({ success: false, message: '입퇴장 이벤트 처리 중 오류가 발생했습니다.' });
+  }
+});
+
 // POST /api/nickname/admin/rooms - 감시 채팅방 추가
 router.post('/admin/rooms', (req, res) => {
   try {
