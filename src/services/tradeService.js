@@ -1009,9 +1009,22 @@ class TradeService {
 
     const isBundleItem = this.bundleItems.has(canonical);
 
+    // 묶음 아이템: 벌크 단위에서 개당 환산가 계산 + 노이즈 개당 데이터 검증
+    let crossVal = null;
+    if (isBundleItem) {
+      // 먼저 displayUnit 결정 (gj 우선)
+      const anyGj = sortedPricingUnits.some(pu => {
+        const em = pricingGroups[pu];
+        return Object.values(em).some(e => e['gj']);
+      });
+      crossVal = this._crossValidateUnits(pricingGroups, anyGj ? 'gj' : 'won');
+    }
+
     for (const pricingUnit of sortedPricingUnits) {
       // 묶음 아이템(소모품/재료)은 단위 미상 데이터 제외
       if (isBundleItem && pricingUnit === '') continue;
+      // 교차검증 실패한 [개당] 데이터 제외
+      if (isBundleItem && crossVal?.shouldSkipRawPerUnit && pricingUnit === '개당') continue;
 
       const enhMap = pricingGroups[pricingUnit];
       const enhKeys = Object.keys(enhMap).sort((a, b) => {
@@ -1055,6 +1068,15 @@ class TradeService {
       }
     }
 
+    // 묶음 아이템: 벌크 단위에서 환산한 개당가 표시
+    if (crossVal?.perUnitPrice) {
+      const unitLabel = crossVal.bulkUnit;
+      const perUnit = crossVal.perUnitPrice;
+      // 소수점 불필요한 0 제거
+      const perUnitStr = perUnit % 1 === 0 ? perUnit.toString() : perUnit.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+      lines.push(`\n💰 개당 환산: ~${perUnitStr}ㄱㅈ (${unitLabel} 기준)`);
+    }
+
     lines.push('');
     lines.push('💡 강화별 상세: !가격 5강 ' + canonical.substring(0, 4));
     lines.push(`\n⚠ 거래오픈톡 ${days}일간 집계 (2건↑ 이상치제거 평균)\n거래에 유의하세요.`);
@@ -1069,6 +1091,66 @@ class TradeService {
     if (!optionsStr) return '';
     const match = optionsStr.match(/(\d*(?:개당|장당|묶음당|셋당|벌당))/);
     return match ? ` (${match[1]})` : '';
+  }
+
+  /**
+   * 단위 문자열에서 수량 배수 추출 ("100개당" → 100, "개당" → 1, "장당" → 1)
+   */
+  _getUnitMultiplier(unitStr) {
+    if (!unitStr) return 0;
+    const match = unitStr.match(/^(\d+)?(?:개당|장당|묶음당|셋당|벌당)$/);
+    if (!match) return 0;
+    return match[1] ? parseInt(match[1]) : 1;
+  }
+
+  /**
+   * 묶음 아이템의 단위간 교차검증 — 벌크 단위에서 개당 환산가 계산
+   * 원본 [개당] 데이터가 환산가와 5배 이상 차이나면 노이즈로 판정
+   * Returns: { perUnitPrice, bulkUnit, shouldSkipRawPerUnit }
+   */
+  _crossValidateUnits(pricingGroups, displayUnit) {
+    // 벌크 단위 중 거래건수 가장 많은 것 찾기
+    let bestBulk = null;
+    for (const pu of Object.keys(pricingGroups)) {
+      const multiplier = this._getUnitMultiplier(pu);
+      if (multiplier <= 1) continue; // 개당이나 미표기는 벌크 아님
+
+      const enhMap = pricingGroups[pu];
+      let totalCount = 0;
+      let sellAvg = null;
+      // 노강(0_0) 데이터 기준
+      const base = enhMap['0_0'];
+      if (base && base[displayUnit]) {
+        const data = base[displayUnit];
+        totalCount = data.total.count;
+        sellAvg = data.sell ? data.sell.avg : (data.buy ? data.buy.avg : null);
+      }
+      if (sellAvg !== null && (!bestBulk || totalCount > bestBulk.count)) {
+        bestBulk = { unit: pu, multiplier, avg: sellAvg, count: totalCount };
+      }
+    }
+
+    if (!bestBulk) return { perUnitPrice: null, bulkUnit: null, shouldSkipRawPerUnit: false };
+
+    const perUnitPrice = Math.round((bestBulk.avg / bestBulk.multiplier) * 1000) / 1000;
+
+    // 원본 [개당] 데이터와 비교
+    let shouldSkipRawPerUnit = false;
+    const perUnitGroup = pricingGroups['개당'];
+    if (perUnitGroup) {
+      const base = perUnitGroup['0_0'];
+      if (base && base[displayUnit]) {
+        const rawAvg = base[displayUnit].sell?.avg || base[displayUnit].buy?.avg;
+        if (rawAvg !== null) {
+          const ratio = rawAvg / perUnitPrice;
+          if (ratio > 5 || ratio < 0.2) {
+            shouldSkipRawPerUnit = true;
+          }
+        }
+      }
+    }
+
+    return { perUnitPrice, bulkUnit: bestBulk.unit, shouldSkipRawPerUnit };
   }
 
   _formatResponse(canonical, enhancement, stats, recentTrades, days) {
@@ -1086,10 +1168,41 @@ class TradeService {
 
     const isBundleItem = this.bundleItems.has(canonical);
 
+    // 묶음 아이템: 벌크 단위에서 개당 환산 + 노이즈 개당 검증
+    let crossVal = null;
+    if (isBundleItem) {
+      // 벌크 단위 중 가장 거래 많은 것 찾기
+      let bestBulk = null;
+      for (const pu of sortedPricingUnits) {
+        const multiplier = this._getUnitMultiplier(pu);
+        if (multiplier <= 1) continue;
+        const gjData = stats.groups[pu]?.gj;
+        if (!gjData) continue;
+        const avg = gjData.sellAvg || gjData.buyAvg;
+        if (avg !== null && (!bestBulk || gjData.count > bestBulk.count)) {
+          bestBulk = { unit: pu, multiplier, avg, count: gjData.count };
+        }
+      }
+      if (bestBulk) {
+        const perUnitPrice = Math.round((bestBulk.avg / bestBulk.multiplier) * 1000) / 1000;
+        let shouldSkipRawPerUnit = false;
+        const perUnitData = stats.groups['개당']?.gj;
+        if (perUnitData) {
+          const rawAvg = perUnitData.sellAvg || perUnitData.buyAvg;
+          if (rawAvg !== null) {
+            const ratio = rawAvg / perUnitPrice;
+            if (ratio > 5 || ratio < 0.2) shouldSkipRawPerUnit = true;
+          }
+        }
+        crossVal = { perUnitPrice, bulkUnit: bestBulk.unit, shouldSkipRawPerUnit };
+      }
+    }
+
     for (const [unitKey, unitLabel] of Object.entries(unitLabels)) {
-      // 묶음 아이템(소모품/재료)은 단위 미상 데이터 제외
+      // 묶음 아이템(소모품/재료)은 단위 미상 + 노이즈 개당 데이터 제외
       const relevantGroups = sortedPricingUnits.filter(pu => {
         if (isBundleItem && pu === '') return false;
+        if (isBundleItem && crossVal?.shouldSkipRawPerUnit && pu === '개당') return false;
         return stats.groups[pu][unitKey];
       });
       if (relevantGroups.length === 0) continue;
@@ -1116,6 +1229,14 @@ class TradeService {
         }
         lines.push(`· ${data.count}건 집계`);
       }
+      lines.push('');
+    }
+
+    // 묶음 아이템: 개당 환산가 표시
+    if (crossVal?.perUnitPrice) {
+      const perUnit = crossVal.perUnitPrice;
+      const perUnitStr = perUnit % 1 === 0 ? perUnit.toString() : perUnit.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+      lines.push(`💰 개당 환산: ~${perUnitStr}ㄱㅈ (${crossVal.bulkUnit} 기준)`);
       lines.push('');
     }
 
