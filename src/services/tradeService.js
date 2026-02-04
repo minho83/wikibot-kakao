@@ -1070,11 +1070,8 @@ class TradeService {
 
     // 묶음 아이템: 벌크 단위에서 환산한 개당가 표시
     if (crossVal?.perUnitPrice) {
-      const unitLabel = crossVal.bulkUnit;
-      const perUnit = crossVal.perUnitPrice;
-      // 소수점 불필요한 0 제거
-      const perUnitStr = perUnit % 1 === 0 ? perUnit.toString() : perUnit.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-      lines.push(`\n💰 개당 환산: ~${perUnitStr}ㄱㅈ (${unitLabel} 기준)`);
+      const priceStr = this._formatPerUnitPrice(crossVal.perUnitPrice);
+      lines.push(`\n💰 개당 환산: ${priceStr} (${crossVal.bulkUnit} 기준)`);
     }
 
     lines.push('');
@@ -1091,6 +1088,28 @@ class TradeService {
     if (!optionsStr) return '';
     const match = optionsStr.match(/(\d*(?:개당|장당|묶음당|셋당|벌당))/);
     return match ? ` (${match[1]})` : '';
+  }
+
+  /**
+   * ㄱㅈ 가격을 사람이 읽기 좋은 형태로 변환 (1ㄱㅈ = 1만원 = 10,000원)
+   * 0.07ㄱㅈ → "~700원", 0.44ㄱㅈ → "~4,400원", 3.5ㄱㅈ → "~3.5만원(3만5천원)"
+   */
+  _formatPerUnitPrice(gjPrice) {
+    const won = Math.round(gjPrice * 10000);
+    if (won < 10000) {
+      // 1만원 미만: 원 단위로 표시
+      return `~${won.toLocaleString()}원`;
+    } else if (gjPrice % 1 === 0) {
+      // 딱 떨어지는 만원 단위
+      return `~${gjPrice}만원`;
+    } else {
+      // 만원 이상 소수: 만원+천원 단위
+      const man = Math.floor(gjPrice);
+      const remainder = won - (man * 10000);
+      const cheon = Math.round(remainder / 1000);
+      if (cheon === 0) return `~${man}만원`;
+      return `~${man}만${cheon}천원`;
+    }
   }
 
   /**
@@ -1234,9 +1253,8 @@ class TradeService {
 
     // 묶음 아이템: 개당 환산가 표시
     if (crossVal?.perUnitPrice) {
-      const perUnit = crossVal.perUnitPrice;
-      const perUnitStr = perUnit % 1 === 0 ? perUnit.toString() : perUnit.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-      lines.push(`💰 개당 환산: ~${perUnitStr}ㄱㅈ (${crossVal.bulkUnit} 기준)`);
+      const priceStr = this._formatPerUnitPrice(crossVal.perUnitPrice);
+      lines.push(`💰 개당 환산: ${priceStr} (${crossVal.bulkUnit} 기준)`);
       lines.push('');
     }
 
