@@ -248,13 +248,23 @@ class TradeService {
 
   /**
    * 아이템 레벨 추출
+   * "1렙", "9/10", "10/11" 등
    */
   _extractItemLevel(text) {
-    const match = text.match(/(\d)렙/);
-    if (match) {
+    // N렙 패턴
+    const lvlMatch = text.match(/(\d+)렙/);
+    if (lvlMatch) {
       return {
-        level: parseInt(match[1]),
-        cleaned: text.replace(/\d렙/, '').trim()
+        level: parseInt(lvlMatch[1]),
+        cleaned: text.replace(/\d+렙/, '').trim()
+      };
+    }
+    // N/N 패턴 (나겔반지 9/10쌍 등)
+    const slashMatch = text.match(/(\d{1,2})\/(\d{1,2})/);
+    if (slashMatch) {
+      return {
+        level: parseInt(slashMatch[2]),  // 높은 쪽 레벨
+        cleaned: text.replace(/\d{1,2}\/\d{1,2}/, '').trim()
       };
     }
     return { level: 0, cleaned: text };
@@ -420,6 +430,7 @@ class TradeService {
       .replace(/^[ㅍㅅㅂ]+\s*/, '')  // ㅍ(팝), ㅅ(삽) 접두사 제거
       .replace(/팝니다|삽니다|팜니다|판매|구매|구합니다|팜|삽/g, '')
       .replace(/[•·\-★☆♧◆■□▪▫]+/g, '')
+      .replace(/\b\d{1,2}\b/g, '')   // 잔여 단독 숫자 제거 (레벨 등)
       .replace(/\s+/g, ' ')
       .trim();
 
