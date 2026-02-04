@@ -115,18 +115,18 @@ app.post('/ask', async (req, res) => {
         // 아이템 정보
         if (item.category === 'item') {
           if (item.level) answer += `   레벨: ${item.level}`;
-          if (item.job) answer += ` | 직업: ${item.job}`;
-          if (item.ac != null && item.ac !== 0) answer += ` | AC: ${item.ac}`;
+          if (item.job) answer += ` | 직업: ${item.job}\n`;
+          if (item.ac != null && item.ac !== 0) answer += `   AC: ${item.ac}`;
           if (item.magicDefense) answer += ` | 마방: ${item.magicDefense}`;
           if (item.smallDamage || item.largeDamage) answer += ` | 데미지: ${item.smallDamage || 0}/${item.largeDamage || 0}`;
-          if (item.hitRole) answer += ` | 명중: ${item.hitRole}`;
-          if (item.damRole) answer += ` | 추뎀: ${item.damRole}`;
           answer += '\n';
-          if (item.hp || item.mp) {
-            let hpmp = '  ';
-            if (item.hp) hpmp += ` HP: ${item.hp}`;
-            if (item.mp) hpmp += ` MP: ${item.mp}`;
-            answer += hpmp + '\n';
+          if (item.hitRole || item.damRole || item.hp || item.mp) {
+            let line = '  ';
+            if (item.hitRole) line += ` 명중: ${item.hitRole}`;
+            if (item.damRole) line += ` | 추뎀: ${item.damRole}`;
+            if (item.hp) line += ` | HP: ${item.hp}`;
+            if (item.mp) line += ` | MP: ${item.mp}`;
+            answer += line + '\n';
           }
           const stats = [];
           if (item.str) stats.push(`STR${item.str > 0 ? '+' : ''}${item.str}`);
@@ -139,11 +139,10 @@ app.post('/ask', async (req, res) => {
 
         // 마법 정보
         if (item.category === 'spell') {
-          if (item.costMana) answer += `   MP소모: ${item.costMana.toLocaleString('ko-KR')}`;
-          if (item.needLevel) answer += ` | 습득레벨: ${item.needLevel}`;
+          if (item.costMana) answer += `   MP소모: ${item.costMana.toLocaleString('ko-KR')}\n`;
+          if (item.needLevel) answer += `   습득레벨: ${item.needLevel}`;
           if (item.needGold) answer += ` | 비용: ${formatGold(item.needGold)}G`;
           answer += '\n';
-          // 스탯 요구사항 (0이 아닌 것만)
           const stats = [];
           if (item.needStr && item.needStr > 0) stats.push(`STR ${item.needStr}`);
           if (item.needDex && item.needDex > 0) stats.push(`DEX ${item.needDex}`);
@@ -159,7 +158,6 @@ app.post('/ask', async (req, res) => {
           if (item.needLevel) answer += `   습득레벨: ${item.needLevel}`;
           if (item.needGold) answer += ` | 비용: ${formatGold(item.needGold)}G`;
           answer += '\n';
-          // 스탯 요구사항 (0이 아닌 것만)
           const stats = [];
           if (item.needStr && item.needStr > 0) stats.push(`STR ${item.needStr}`);
           if (item.needDex && item.needDex > 0) stats.push(`DEX ${item.needDex}`);
@@ -216,18 +214,18 @@ app.post('/ask/item', async (req, res) => {
         answer += `${idx + 1}. [${item.categoryName || '아이템'}] ${title}\n`;
 
         if (item.level) answer += `   레벨: ${item.level}`;
-        if (item.job) answer += ` | 직업: ${item.job}`;
-        if (item.ac != null && item.ac !== 0) answer += ` | AC: ${item.ac}`;
+        if (item.job) answer += ` | 직업: ${item.job}\n`;
+        if (item.ac != null && item.ac !== 0) answer += `   AC: ${item.ac}`;
         if (item.magicDefense) answer += ` | 마방: ${item.magicDefense}`;
         if (item.smallDamage || item.largeDamage) answer += ` | 데미지: ${item.smallDamage || 0}/${item.largeDamage || 0}`;
-        if (item.hitRole) answer += ` | 명중: ${item.hitRole}`;
-        if (item.damRole) answer += ` | 추뎀: ${item.damRole}`;
         answer += '\n';
-        if (item.hp || item.mp) {
-          let hpmp = '  ';
-          if (item.hp) hpmp += ` HP: ${item.hp}`;
-          if (item.mp) hpmp += ` MP: ${item.mp}`;
-          answer += hpmp + '\n';
+        if (item.hitRole || item.damRole || item.hp || item.mp) {
+          let line = '  ';
+          if (item.hitRole) line += ` 명중: ${item.hitRole}`;
+          if (item.damRole) line += ` | 추뎀: ${item.damRole}`;
+          if (item.hp) line += ` | HP: ${item.hp}`;
+          if (item.mp) line += ` | MP: ${item.mp}`;
+          answer += line + '\n';
         }
         const stats = [];
         if (item.str) stats.push(`STR${item.str > 0 ? '+' : ''}${item.str}`);
@@ -283,8 +281,8 @@ app.post('/ask/skill', async (req, res) => {
         answer += `${idx + 1}. [${item.categoryName || item.category}] ${title}\n`;
 
         // 마법/스킬 정보
-        if (item.costMana) answer += `   MP소모: ${item.costMana.toLocaleString('ko-KR')}`;
-        if (item.needLevel) answer += ` | 습득레벨: ${item.needLevel}`;
+        if (item.costMana) answer += `   MP소모: ${item.costMana.toLocaleString('ko-KR')}\n`;
+        if (item.needLevel) answer += `   습득레벨: ${item.needLevel}`;
         if (item.needGold) answer += ` | 비용: ${formatGold(item.needGold)}G`;
         answer += '\n';
 
