@@ -604,17 +604,17 @@ class TradeService {
       return { answer, sources: [] };
     }
 
-    // 통계 조회 (강화별, 가격단위별)
+    // 강화 미지정 시 → 강화별 요약
+    if (enhancement === null || enhancement === undefined || enhancement === 0) {
+      return this._formatEnhancementSummary(canonical, dateLimitStr, days);
+    }
+
+    // 강화 지정 시 → 해당 강화만 상세
     const stats = this._aggregateStats(canonical, enhancement, dateLimitStr);
     const recentTrades = this._getRecentTrades(canonical, enhancement, dateLimitStr, 5);
 
     if (!stats || stats.count === 0) {
-      // 강화 무관하게 전체 검색
-      const allStats = this._aggregateStats(canonical, null, dateLimitStr);
-      if (!allStats || allStats.count === 0) {
-        return { answer: `"${canonical}"의 최근 ${days}일 시세 데이터가 없습니다.`, sources: [] };
-      }
-      return this._formatResponse(canonical, null, allStats, [], days);
+      return { answer: `"${canonical}" ${enhancement}강의 최근 ${days}일 시세 데이터가 없습니다.`, sources: [] };
     }
 
     return this._formatResponse(canonical, enhancement, stats, recentTrades, days);
@@ -723,6 +723,76 @@ class TradeService {
       seller_name: row[5],
       item_options: row[6],
     }));
+  }
+
+  _formatEnhancementSummary(canonical, dateLimitStr, days) {
+    const unitLabels = { gj: 'ㄱㅈ', won: '만원', eok: '억' };
+
+    // 강화별 ㄱㅈ 평균 조회
+    const result = this.db.exec(`
+      SELECT enhancement, price_unit,
+        COUNT(*) as cnt, AVG(price) as avg_price,
+        MIN(price) as min_price, MAX(price) as max_price
+      FROM trades
+      WHERE canonical_name = ? AND trade_date >= ?
+      GROUP BY enhancement, price_unit
+      ORDER BY enhancement ASC, cnt DESC
+    `, [canonical, dateLimitStr]);
+
+    if (result.length === 0 || result[0].values.length === 0) {
+      return { answer: `"${canonical}"의 최근 ${days}일 시세 데이터가 없습니다.`, sources: [] };
+    }
+
+    // 강화별로 그룹화
+    const enhMap = {};
+    for (const row of result[0].values) {
+      const [enh, pu, cnt, avg, min, max] = row;
+      const key = enh || 0;
+      if (!enhMap[key]) enhMap[key] = {};
+      enhMap[key][pu] = { count: cnt, avg: Math.round(avg * 10) / 10, min, max };
+    }
+
+    let lines = [`[시세] ${canonical}`];
+    lines.push('━━━━━━━━━━━━');
+
+    // ㄱㅈ 기준 강화별 요약 (가장 많은 단위)
+    const enhKeys = Object.keys(enhMap).map(Number).sort((a, b) => a - b);
+    const mainUnit = 'gj'; // ㄱㅈ 우선
+
+    lines.push(`ㄱㅈ 기준 (최근 ${days}일)`);
+    let hasGj = false;
+    for (const enh of enhKeys) {
+      const data = enhMap[enh][mainUnit];
+      if (!data) continue;
+      hasGj = true;
+      const enhLabel = enh === 0 ? '노강' : `${enh}강`;
+      if (data.min !== data.max) {
+        lines.push(`· ${enhLabel}: 평균 ${data.avg} (${data.min}~${data.max}) ${data.count}건`);
+      } else {
+        lines.push(`· ${enhLabel}: ${data.avg} ${data.count}건`);
+      }
+    }
+
+    if (!hasGj) {
+      // ㄱㅈ 없으면 만원 기준
+      lines.pop(); // "ㄱㅈ 기준" 제거
+      lines.push(`만원 기준 (최근 ${days}일)`);
+      for (const enh of enhKeys) {
+        const data = enhMap[enh]['won'];
+        if (!data) continue;
+        const enhLabel = enh === 0 ? '노강' : `${enh}강`;
+        if (data.min !== data.max) {
+          lines.push(`· ${enhLabel}: 평균 ${data.avg} (${data.min}~${data.max}) ${data.count}건`);
+        } else {
+          lines.push(`· ${enhLabel}: ${data.avg} ${data.count}건`);
+        }
+      }
+    }
+
+    lines.push('');
+    lines.push('💡 강화별 상세: !가격 5강 ' + canonical.substring(0, 4));
+
+    return { answer: lines.join('\n').trim(), sources: [] };
   }
 
   _formatResponse(canonical, enhancement, stats, recentTrades, days) {
