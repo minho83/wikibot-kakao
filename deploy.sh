@@ -7,6 +7,7 @@ export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 REPO_DIR="$HOME/wikibot-kakao"
 IMAGE_NAME="wikibot-kakao"
 CONTAINER_NAME="wikibot-server"
+DATA_DIR="$HOME/wikibot-data"
 LOG_FILE="$REPO_DIR/deploy.log"
 
 cd "$REPO_DIR" || exit 1
@@ -36,13 +37,21 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# 컨테이너 재시작
+# DB 데이터 디렉토리 생성
+mkdir -p "$DATA_DIR"
+
+# 컨테이너 재시작 (DB 볼륨 마운트)
 docker stop "$CONTAINER_NAME" 2>/dev/null
 docker rm "$CONTAINER_NAME" 2>/dev/null
 docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
     -p 8100:3000 \
+    -v "$DATA_DIR/nickname.db:/app/nickname.db" \
+    -v "$DATA_DIR/notice.db:/app/notice.db" \
     "$IMAGE_NAME" >> "$LOG_FILE" 2>&1
+
+# iris-bot 코드도 동기화
+cp "$REPO_DIR/iris-kakao-bot/app.py" "$HOME/iris-kakao-bot/bot-server/app.py" 2>/dev/null
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 배포 완료: $(git rev-parse --short HEAD)" >> "$LOG_FILE"
