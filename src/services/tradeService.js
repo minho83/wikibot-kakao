@@ -244,6 +244,8 @@ class TradeService {
       /쿨탐\s*\d+분/,
       /^타인.*사칭/,
       /^3자사기/,
+      /^\(?구매자?\s*(에테르?|스피[먼튬]|코어)\s*제공/,  // 부가조건 단독줄
+      /^[(\s]*(에테르?|시무)\s*제공/,                    // "에테르 제공" 단독줄
     ];
     return skipPatterns.some(p => p.test(trimmed));
   }
@@ -265,11 +267,13 @@ class TradeService {
    * 인라인 거래 타입 감지
    */
   _detectInlineTradeType(text) {
+    // 교환 패턴 우선 감지 (팝니다+교환 혼합 메시지 대응)
+    if (/교환|맞교|↔|⇔/.test(text)) return 'exchange';
+    if (/[으로]{1,2}\s*(바꿔|바꿀|교체)/.test(text)) return 'exchange';
     if (/팝니다|팜니다|판매합니다/.test(text)) return 'sell';
     if (/삽니다|구매합니다|구합니다/.test(text)) return 'buy';
     if (/^ㅍ/.test(text.trim())) return 'sell';
     if (/^ㅅ[^ㅅ]/.test(text.trim())) return 'buy';
-    if (/교환/.test(text)) return 'exchange';
     return null;
   }
 
@@ -432,13 +436,12 @@ class TradeService {
     const options = [];
     let cleaned = text;
 
-    // 괄호 안 옵션
+    // 괄호 안 옵션 (부가조건: 제공/흥정/협의 등)
     const parenMatches = text.match(/\(([^)]+)\)/g);
     if (parenMatches) {
       for (const pm of parenMatches) {
         const inner = pm.slice(1, -1);
-        if (/흥정|제공|협의|선택/.test(inner)) {
-          options.push(inner.trim());
+        if (/흥정|제공|협의|선택|불가|가능|필수|포함/.test(inner)) {
           cleaned = cleaned.replace(pm, '').trim();
         }
       }
@@ -451,9 +454,10 @@ class TradeService {
     }
     if (/일반/.test(cleaned)) { options.push('일반'); cleaned = cleaned.replace(/일반/g, '').trim(); }
     if (/무형/.test(cleaned)) { options.push('무형'); cleaned = cleaned.replace(/무형/g, '').trim(); }
-    if (/시무\s*제공/.test(cleaned)) { options.push('시무제공'); cleaned = cleaned.replace(/시무\s*제공/g, '').trim(); }
-    if (/코어\s*제공/.test(cleaned)) { options.push('코어제공'); cleaned = cleaned.replace(/코어\s*제공/g, '').trim(); }
-    if (/에테\s*제공/.test(cleaned)) { options.push('에테제공'); cleaned = cleaned.replace(/에테\s*제공/g, '').trim(); }
+    if (/시무\s*제공/.test(cleaned)) { cleaned = cleaned.replace(/시무\s*제공/g, '').trim(); }
+    if (/코어\s*제공/.test(cleaned)) { cleaned = cleaned.replace(/코어\s*제공/g, '').trim(); }
+    if (/에테르?\s*제공\s*\d*개?/.test(cleaned)) { cleaned = cleaned.replace(/에테르?\s*제공\s*\d*개?/g, '').trim(); }
+    if (/구매자\s*제공/.test(cleaned)) { cleaned = cleaned.replace(/구매자\s*제공/g, '').trim(); }
 
     return { options, cleaned };
   }
@@ -814,7 +818,7 @@ class TradeService {
     const puCase = this._pricingUnitSqlCase();
     let sql = `SELECT price_unit, trade_type, price, ${puCase} as pricing_unit
       FROM trades
-      WHERE canonical_name = ? AND trade_date >= ?`;
+      WHERE canonical_name = ? AND trade_date >= ? AND trade_type != 'exchange'`;
     const params = [canonicalName, dateLimitStr];
 
     if (enhancement !== null && enhancement !== undefined && enhancement > 0) {
@@ -876,7 +880,7 @@ class TradeService {
   _getRecentTrades(canonicalName, enhancement, dateLimitStr, limit) {
     let sql = `SELECT trade_type, price, price_unit, enhancement, trade_date, seller_name, item_options
       FROM trades
-      WHERE canonical_name = ? AND trade_date >= ?`;
+      WHERE canonical_name = ? AND trade_date >= ? AND trade_type != 'exchange'`;
     const params = [canonicalName, dateLimitStr];
 
     if (enhancement !== null && enhancement !== undefined && enhancement > 0) {
@@ -910,7 +914,7 @@ class TradeService {
         COUNT(*) as cnt, AVG(price) as avg_price,
         MIN(price) as min_price, MAX(price) as max_price
       FROM trades
-      WHERE canonical_name = ? AND trade_date >= ?
+      WHERE canonical_name = ? AND trade_date >= ? AND trade_type != 'exchange'
       GROUP BY enhancement, item_level, price_unit, trade_type, pricing_unit
       ORDER BY enhancement ASC, item_level ASC, cnt DESC
     `, [canonical, dateLimitStr]);
