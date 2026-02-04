@@ -780,15 +780,22 @@ app.listen(PORT, () => {
 });
 
 // 프로세스 종료 시 DB 저장
-process.on('SIGINT', () => {
-  nicknameService.close();
-  noticeService.close();
-  tradeService.close();
+function gracefulShutdown(signal) {
+  console.log(`[${signal}] Saving databases...`);
+  try {
+    nicknameService.close();
+    console.log(`[${signal}] nickname.db saved`);
+  } catch (e) { console.error(`[${signal}] nickname.db save failed:`, e.message); }
+  try {
+    noticeService.close();
+    console.log(`[${signal}] notice.db saved`);
+  } catch (e) { console.error(`[${signal}] notice.db save failed:`, e.message); }
+  try {
+    tradeService.close();
+    console.log(`[${signal}] trade.db saved`);
+  } catch (e) { console.error(`[${signal}] trade.db save failed:`, e.message); }
+  console.log(`[${signal}] Shutdown complete`);
   process.exit(0);
-});
-process.on('SIGTERM', () => {
-  nicknameService.close();
-  noticeService.close();
-  tradeService.close();
-  process.exit(0);
-});
+}
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

@@ -37,7 +37,17 @@ class NoticeService {
 
         if (fs.existsSync(this.dbPath)) {
             const buffer = fs.readFileSync(this.dbPath);
-            this.db = new SQL.Database(buffer);
+            if (buffer.length > 0) {
+                try {
+                    this.db = new SQL.Database(buffer);
+                } catch (e) {
+                    console.warn('notice.db corrupt, creating fresh DB:', e.message);
+                    this.db = new SQL.Database();
+                }
+            } else {
+                console.warn('notice.db is empty (0 bytes), creating fresh DB');
+                this.db = new SQL.Database();
+            }
         } else {
             this.db = new SQL.Database();
         }

@@ -18,7 +18,17 @@ class NicknameService {
 
       if (fs.existsSync(this.dbPath)) {
         const buffer = fs.readFileSync(this.dbPath);
-        this.db = new SQL.Database(buffer);
+        if (buffer.length > 0) {
+          try {
+            this.db = new SQL.Database(buffer);
+          } catch (e) {
+            console.warn('nickname.db corrupt, creating fresh DB:', e.message);
+            this.db = new SQL.Database();
+          }
+        } else {
+          console.warn('nickname.db is empty (0 bytes), creating fresh DB');
+          this.db = new SQL.Database();
+        }
       } else {
         this.db = new SQL.Database();
       }
