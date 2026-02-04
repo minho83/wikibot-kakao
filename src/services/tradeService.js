@@ -612,7 +612,7 @@ class TradeService {
       // 강화 무관하게 전체 검색
       const allStats = this._aggregateStats(canonical, null, dateLimitStr);
       if (!allStats || allStats.count === 0) {
-        return { answer: `"${canonical}"의 최근 ${days}일 거래 데이터가 없습니다.`, sources: [] };
+        return { answer: `"${canonical}"의 최근 ${days}일 시세 데이터가 없습니다.`, sources: [] };
       }
       return this._formatResponse(canonical, null, allStats, [], days);
     }
@@ -739,13 +739,13 @@ class TradeService {
       if (data.min !== data.max) {
         lines.push(`· 범위: ${data.min} ~ ${data.max}`);
       }
-      lines.push(`· 거래 ${data.count}건`);
+      lines.push(`· ${data.count}건 등록`);
       lines.push('');
     }
 
     // 최근 거래
     if (recentTrades.length > 0) {
-      lines.push('최근 거래');
+      lines.push('최근 시세');
       for (const t of recentTrades) {
         const typeLabel = t.trade_type === 'sell' ? '판매' : t.trade_type === 'buy' ? '구매' : '교환';
         const unitLabel = unitLabels[t.price_unit] || '';
