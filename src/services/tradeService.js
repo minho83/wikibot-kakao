@@ -747,59 +747,72 @@ class TradeService {
   _formatEnhancementSummary(canonical, dateLimitStr, days) {
     const unitLabels = { gj: 'ㄱㅈ', won: '만원', eok: '억' };
 
-    // 강화별 ㄱㅈ 평균 조회
+    // 강화+레벨별 조회
     const result = this.db.exec(`
-      SELECT enhancement, price_unit,
+      SELECT enhancement, item_level, price_unit,
         COUNT(*) as cnt, AVG(price) as avg_price,
         MIN(price) as min_price, MAX(price) as max_price
       FROM trades
       WHERE canonical_name = ? AND trade_date >= ?
-      GROUP BY enhancement, price_unit
-      ORDER BY enhancement ASC, cnt DESC
+      GROUP BY enhancement, item_level, price_unit
+      ORDER BY enhancement ASC, item_level ASC, cnt DESC
     `, [canonical, dateLimitStr]);
 
     if (result.length === 0 || result[0].values.length === 0) {
       return { answer: `"${canonical}"의 최근 ${days}일 시세 데이터가 없습니다.`, sources: [] };
     }
 
-    // 강화별로 그룹화
+    // 강화+레벨별로 그룹화 (키: "강화_레벨")
     const enhMap = {};
     for (const row of result[0].values) {
-      const [enh, pu, cnt, avg, min, max] = row;
-      const key = enh || 0;
-      if (!enhMap[key]) enhMap[key] = {};
+      const [enh, lvl, pu, cnt, avg, min, max] = row;
+      const key = `${enh || 0}_${lvl || 0}`;
+      if (!enhMap[key]) enhMap[key] = { enh: enh || 0, lvl: lvl || 0 };
       enhMap[key][pu] = { count: cnt, avg: Math.round(avg * 10) / 10, min, max };
     }
 
     let lines = [`[시세] ${canonical}`];
     lines.push('━━━━━━━━━━━━');
 
-    // ㄱㅈ 기준 강화별 요약 (가장 많은 단위)
-    const enhKeys = Object.keys(enhMap).map(Number).sort((a, b) => a - b);
-    const mainUnit = 'gj'; // ㄱㅈ 우선
+    // 정렬: 강화 → 레벨 순
+    const enhKeys = Object.keys(enhMap).sort((a, b) => {
+      const [ae, al] = a.split('_').map(Number);
+      const [be, bl] = b.split('_').map(Number);
+      return ae !== be ? ae - be : al - bl;
+    });
+    const mainUnit = 'gj';
 
     lines.push(`ㄱㅈ 기준 (최근 ${days}일)`);
     let hasGj = false;
-    for (const enh of enhKeys) {
-      const data = enhMap[enh][mainUnit];
+    for (const key of enhKeys) {
+      const entry = enhMap[key];
+      const data = entry[mainUnit];
       if (!data) continue;
       hasGj = true;
-      const enhLabel = enh === 0 ? '노강' : `${enh}강`;
+      let label;
+      if (entry.enh === 0 && entry.lvl === 0) label = '노강';
+      else if (entry.enh === 0 && entry.lvl > 0) label = `${entry.lvl}렙`;
+      else if (entry.lvl > 0) label = `${entry.enh}강 ${entry.lvl}렙`;
+      else label = `${entry.enh}강`;
       if (data.min !== data.max) {
-        lines.push(`· ${enhLabel}: 평균 ${data.avg} (${data.min}~${data.max}) ${data.count}건`);
+        lines.push(`· ${label}: 평균 ${data.avg} (${data.min}~${data.max}) ${data.count}건`);
       } else {
-        lines.push(`· ${enhLabel}: ${data.avg} ${data.count}건`);
+        lines.push(`· ${label}: ${data.avg} ${data.count}건`);
       }
     }
 
     if (!hasGj) {
-      // ㄱㅈ 없으면 만원 기준
-      lines.pop(); // "ㄱㅈ 기준" 제거
+      lines.pop();
       lines.push(`만원 기준 (최근 ${days}일)`);
-      for (const enh of enhKeys) {
-        const data = enhMap[enh]['won'];
+      for (const key of enhKeys) {
+        const entry = enhMap[key];
+        const data = entry['won'];
         if (!data) continue;
-        const enhLabel = enh === 0 ? '노강' : `${enh}강`;
+        let label;
+        if (entry.enh === 0 && entry.lvl === 0) label = '노강';
+        else if (entry.enh === 0 && entry.lvl > 0) label = `${entry.lvl}렙`;
+        else if (entry.lvl > 0) label = `${entry.enh}강 ${entry.lvl}렙`;
+        else label = `${entry.enh}강`;
         if (data.min !== data.max) {
           lines.push(`· ${enhLabel}: 평균 ${data.avg} (${data.min}~${data.max}) ${data.count}건`);
         } else {
