@@ -979,6 +979,7 @@ class TradeService {
         `SELECT item_options, COUNT(*) as cnt FROM trades
          WHERE canonical_name = ? AND price_unit = ? AND trade_type = 'sell'
          AND trade_date >= ? AND trade_type != 'exchange'
+         AND item_options IS NOT NULL AND item_options != '' AND item_options != '개당'
          GROUP BY item_options ORDER BY cnt DESC LIMIT 1`,
         [canonical, displayUnit, startStr]
       );
