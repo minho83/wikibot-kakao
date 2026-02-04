@@ -746,6 +746,15 @@ class TradeService {
       return { answer, sources: [] };
     }
 
+    // 여러 아이템 매칭 → 후보 목록 안내
+    if (typeof canonical === 'object' && canonical.multiple) {
+      const list = canonical.multiple.map(name => `· ${name}`).join('\n');
+      return {
+        answer: `"${searchTerm}" 검색 결과 여러 아이템이 있습니다.\n━━━━━━━━━━━━\n${list}\n\n정확한 이름으로 다시 검색해주세요.`,
+        sources: []
+      };
+    }
+
     // 강화 미지정 시 → 강화별 요약
     if (enhancement === null || enhancement === undefined || enhancement === 0) {
       return this._formatEnhancementSummary(canonical, dateLimitStr, days);
@@ -765,47 +774,85 @@ class TradeService {
   _findCanonicalName(searchTerm) {
     if (!searchTerm) return null;
 
-    // 1. 별칭 테이블 직접 매칭
+    // 1. 별칭 테이블 정확 매칭 → 바로 리턴
     const alias = this.aliasMap.get(searchTerm);
     if (alias) return alias;
 
-    // 2. 별칭 부분 매칭
-    for (const [a, c] of this.aliasMap) {
-      if (searchTerm.includes(a) && a.length >= 2) return c;
-      if (a.includes(searchTerm) && searchTerm.length >= 2) return c;
-    }
-
-    // 3. LOD_DB 아이템명 직접 매칭
+    // 2. LOD_DB 아이템명 정확 매칭 → 바로 리턴 (별칭 부분매칭보다 우선)
     if (this.knownItems.has(searchTerm)) return searchTerm;
+
+    // 3. 별칭 부분 매칭 → 후보 수집 (별칭이 검색어를 포함하는 경우만)
+    const aliasCandidates = new Set();
+    for (const [a, c] of this.aliasMap) {
+      // 별칭이 검색어를 포함 (예: "주작의눈물" includes "주작의눈" → 해당 정식명 추가)
+      if (a.includes(searchTerm) && searchTerm.length >= 2) aliasCandidates.add(c);
+    }
+    if (aliasCandidates.size === 1) return [...aliasCandidates][0];
+
+    // 4. LOD_DB 부분 매칭 → 후보 수집
+    const lodCandidates = new Set();
     for (const itemName of this.knownItems) {
-      if (itemName.includes(searchTerm) && searchTerm.length >= 2) return itemName;
+      if (itemName.includes(searchTerm) && searchTerm.length >= 2) lodCandidates.add(itemName);
+    }
+    // 별칭 후보와 합치기
+    const allCandidates = new Set([...aliasCandidates, ...lodCandidates]);
+
+    // 후보가 1개면 바로 리턴
+    if (allCandidates.size === 1) return [...allCandidates][0];
+
+    // 후보가 여러 개면 → 거래 데이터 있는 것만 필터 + 건수 기준 정렬
+    if (allCandidates.size > 1) {
+      const withTrades = [];
+      for (const name of allCandidates) {
+        const r = this.db.exec(
+          `SELECT COUNT(*) FROM trades WHERE canonical_name = ? AND trade_type != 'exchange'`,
+          [name]
+        );
+        const cnt = r.length > 0 ? r[0].values[0][0] : 0;
+        if (cnt > 0) withTrades.push({ name, count: cnt });
+      }
+      if (withTrades.length === 1) return withTrades[0].name;
+      if (withTrades.length > 1) {
+        // 여러 아이템에 거래 데이터 존재 → 후보 목록 리턴
+        withTrades.sort((a, b) => b.count - a.count);
+        return { multiple: withTrades.map(w => w.name) };
+      }
+      // 거래 데이터 없으면 LOD_DB 후보 목록 리턴
+      return { multiple: [...allCandidates].slice(0, 10) };
     }
 
-    // 4. DB에서 canonical_name 검색 (LOD_DB 검증된 것 우선)
+    // 5. DB에서 canonical_name 검색 (LOD_DB 검증된 것 우선)
     const result = this.db.exec(
       `SELECT DISTINCT canonical_name, COUNT(*) as cnt FROM trades
-       WHERE canonical_name LIKE ? GROUP BY canonical_name ORDER BY cnt DESC LIMIT 5`,
+       WHERE canonical_name LIKE ? AND trade_type != 'exchange'
+       GROUP BY canonical_name ORDER BY cnt DESC LIMIT 10`,
       [`%${searchTerm}%`]
     );
     if (result.length > 0) {
-      // LOD_DB에 있는 아이템 우선
-      for (const row of result[0].values) {
-        if (this.isKnownItem(row[0])) return row[0];
-      }
-      // 없으면 거래 건수 가장 많은 것 (최소 5건 이상)
+      const known = result[0].values.filter(r => this.isKnownItem(r[0]));
+      if (known.length === 1) return known[0][0];
+      if (known.length > 1) return { multiple: known.map(r => r[0]) };
+      // LOD_DB에 없는 것 중 5건 이상만
+      const valid = result[0].values.filter(r => r[1] >= 5);
+      if (valid.length === 1) return valid[0][0];
+      if (valid.length > 1) return { multiple: valid.map(r => r[0]) };
       if (result[0].values[0][1] >= 5) return result[0].values[0][0];
     }
 
-    // 5. item_name 검색
+    // 6. item_name 검색
     const result2 = this.db.exec(
       `SELECT DISTINCT canonical_name, COUNT(*) as cnt FROM trades
-       WHERE item_name LIKE ? GROUP BY canonical_name ORDER BY cnt DESC LIMIT 5`,
+       WHERE item_name LIKE ? AND trade_type != 'exchange'
+       GROUP BY canonical_name ORDER BY cnt DESC LIMIT 10`,
       [`%${searchTerm}%`]
     );
     if (result2.length > 0) {
-      for (const row of result2[0].values) {
-        if (this.isKnownItem(row[0])) return row[0];
-      }
+      const known2 = result2[0].values.filter(r => this.isKnownItem(r[0]));
+      if (known2.length === 1) return known2[0][0];
+      if (known2.length > 1) return { multiple: known2.map(r => r[0]) };
+      const valid2 = result2[0].values.filter(r => r[1] >= 5);
+      if (valid2.length === 1) return valid2[0][0];
+      if (valid2.length > 1) return { multiple: valid2.map(r => r[0]) };
       if (result2[0].values[0][1] >= 5) return result2[0].values[0][0];
     }
 
