@@ -1,6 +1,6 @@
 class MessageParser {
   constructor() {
-    this.supportedCommands = ['!검색', '!통계', '!도움말'];
+    this.supportedCommands = ['!검색', '!통계', '!도움말', '!공지', '!업데이트'];
   }
 
   parse(message) {

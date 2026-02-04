@@ -8,6 +8,7 @@ const { router: nicknameController, setNicknameService } = require('./controller
 const { SearchService } = require('./services/searchService');
 const { CommunityService } = require('./services/communityService');
 const { NicknameService } = require('./services/nicknameService');
+const { NoticeService } = require('./services/noticeService');
 const { rateLimiter, errorHandler } = require('./middleware');
 
 const app = express();
@@ -15,6 +16,7 @@ const PORT = process.env.PORT || 3000;
 const searchService = new SearchService();
 const communityService = new CommunityService();
 const nicknameService = new NicknameService();
+const noticeService = new NoticeService();
 
 // 검색 서비스 초기화
 let initialized = false;
@@ -22,6 +24,7 @@ const initializeService = async () => {
   if (!initialized) {
     await searchService.initialize();
     await nicknameService.initialize();
+    await noticeService.initialize();
     setNicknameService(nicknameService);
     initialized = true;
   }
@@ -366,6 +369,116 @@ app.post('/ask/community', async (req, res) => {
   }
 });
 
+// 공지사항 조회 (/ask/notice) - Rate limiting 적용
+app.post('/ask/notice', async (req, res) => {
+  try {
+    const rateCheck = canMakeCommunityRequest();
+    if (!rateCheck.allowed) {
+      const waitSec = Math.ceil(rateCheck.waitTime / 1000);
+      return res.json({
+        answer: `서버 보호를 위해 ${waitSec}초 후에 다시 시도해주세요.`,
+        sources: []
+      });
+    }
+    recordCommunityRequest();
+
+    const result = await noticeService.getLatestNotice();
+
+    if (result.success) {
+      const data = result.data;
+      let answer = `[${data.category || '공지'}] ${data.title}\n`;
+      answer += `${data.date}\n\n`;
+      answer += data.content;
+      answer += `\n\n${data.link}`;
+
+      if (data.otherNotices && data.otherNotices.length > 0) {
+        answer += '\n\n-- 다른 공지 --\n';
+        data.otherNotices.forEach((r, idx) => {
+          answer += `${idx + 1}. [${r.category || ''}] ${r.title} (${r.date})\n`;
+        });
+      }
+
+      res.json({ answer, sources: [{ title: data.title, url: data.link, score: 1 }] });
+    } else {
+      res.json({ answer: result.message, sources: [] });
+    }
+  } catch (error) {
+    console.error('Notice error:', error);
+    res.status(500).json({ answer: '공지사항 조회 중 오류가 발생했습니다.', sources: [] });
+  }
+});
+
+// 업데이트 내역 조회 (/ask/update)
+app.post('/ask/update', async (req, res) => {
+  try {
+    const rateCheck = canMakeCommunityRequest();
+    if (!rateCheck.allowed) {
+      const waitSec = Math.ceil(rateCheck.waitTime / 1000);
+      return res.json({
+        answer: `서버 보호를 위해 ${waitSec}초 후에 다시 시도해주세요.`,
+        sources: []
+      });
+    }
+    recordCommunityRequest();
+
+    const result = await noticeService.getLatestUpdate();
+
+    if (result.success) {
+      const data = result.data;
+      let answer = `${data.title}\n`;
+      answer += `${data.date}\n\n`;
+      answer += data.content;
+      answer += `\n\n${data.link}`;
+
+      if (data.otherUpdates && data.otherUpdates.length > 0) {
+        answer += '\n\n-- 다른 업데이트 --\n';
+        data.otherUpdates.forEach((r, idx) => {
+          answer += `${idx + 1}. ${r.title} (${r.date})\n`;
+        });
+      }
+
+      res.json({ answer, sources: [{ title: data.title, url: data.link, score: 1 }] });
+    } else {
+      res.json({ answer: result.message, sources: [] });
+    }
+  } catch (error) {
+    console.error('Update error:', error);
+    res.status(500).json({ answer: '업데이트 조회 중 오류가 발생했습니다.', sources: [] });
+  }
+});
+
+// 새 공지/업데이트 자동 체크 (/ask/check-new)
+// n8n 스케줄러에서 주기적으로 호출하여 새 글이 있으면 알림
+app.get('/ask/check-new', async (req, res) => {
+  try {
+    const noticeResult = await noticeService.checkNew('notice');
+    const updateResult = await noticeService.checkNew('update');
+
+    const newItems = [];
+    if (noticeResult) newItems.push({ type: 'notice', ...noticeResult });
+    if (updateResult) newItems.push({ type: 'update', ...updateResult });
+
+    if (newItems.length === 0) {
+      return res.json({ hasNew: false, message: '새로운 공지/업데이트가 없습니다.' });
+    }
+
+    // 알림 메시지 조합
+    let message = '';
+    for (const item of newItems) {
+      const label = item.type === 'notice' ? '공지' : '업데이트';
+      message += `[새 ${label}] ${item.title}\n`;
+      message += `${item.date}\n\n`;
+      message += item.content;
+      message += `\n\n${item.link}\n\n`;
+    }
+
+    res.json({ hasNew: true, count: newItems.length, message: message.trim(), items: newItems });
+  } catch (error) {
+    console.error('Check new error:', error);
+    res.status(500).json({ hasNew: false, message: '확인 중 오류가 발생했습니다.' });
+  }
+});
+
 app.use('/api/nickname', nicknameController);
 app.use('/webhook', rateLimiter, webhookController);
 
@@ -379,17 +492,102 @@ app.get('/health', (req, res) => {
 
 app.use(errorHandler);
 
+// 공지/업데이트 자동 체크 스케줄러 (개별 스케줄)
+function startNoticeScheduler() {
+  const webhookUrl = process.env.NOTICE_WEBHOOK_URL;
+  const dayNames = ['일','월','화','수','목','금','토'];
+
+  // 공지: 화 17:05
+  const noticeSchedule = (process.env.NOTICE_SCHEDULE || '2-17:05').split(',').map(s => {
+    const [d, t] = s.trim().split('-');
+    const [h, m] = t.split(':');
+    return { day: Number(d), hour: Number(h), minute: Number(m) };
+  });
+  // 업데이트: 수 17:00, 목 10:00
+  const updateSchedule = (process.env.UPDATE_SCHEDULE || '3-17:00,4-10:00').split(',').map(s => {
+    const [d, t] = s.trim().split('-');
+    const [h, m] = t.split(':');
+    return { day: Number(d), hour: Number(h), minute: Number(m) };
+  });
+
+  const checked = new Set();
+
+  setInterval(async () => {
+    const now = new Date();
+    const day = now.getDay();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    const timeKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${hour}-${minute}`;
+
+    // 공지 체크
+    const noticeMatch = noticeSchedule.some(s => s.day === day && s.hour === hour && s.minute === minute);
+    const noticeKey = `notice-${timeKey}`;
+    if (noticeMatch && !checked.has(noticeKey)) {
+      checked.add(noticeKey);
+      console.log(`[NoticeScheduler] 공지 자동 체크 (${now.toLocaleString('ko-KR')})`);
+      await runCheck('notice', webhookUrl);
+    }
+
+    // 업데이트 체크
+    const updateMatch = updateSchedule.some(s => s.day === day && s.hour === hour && s.minute === minute);
+    const updateKey = `update-${timeKey}`;
+    if (updateMatch && !checked.has(updateKey)) {
+      checked.add(updateKey);
+      console.log(`[NoticeScheduler] 업데이트 자동 체크 (${now.toLocaleString('ko-KR')})`);
+      await runCheck('update', webhookUrl);
+    }
+
+    // 오래된 키 정리 (24시간 이상 지난 것)
+    if (checked.size > 100) checked.clear();
+  }, 60 * 1000);
+
+  const noticeDesc = noticeSchedule.map(s => `${dayNames[s.day]} ${s.hour}:${String(s.minute).padStart(2,'0')}`).join(', ');
+  const updateDesc = updateSchedule.map(s => `${dayNames[s.day]} ${s.hour}:${String(s.minute).padStart(2,'0')}`).join(', ');
+  console.log(`[NoticeScheduler] 공지 체크: ${noticeDesc}`);
+  console.log(`[NoticeScheduler] 업데이트 체크: ${updateDesc}`);
+}
+
+async function runCheck(type, webhookUrl) {
+  try {
+    const result = await noticeService.checkNew(type);
+    if (!result) {
+      console.log(`[NoticeScheduler] 새 ${type} 없음`);
+      return;
+    }
+
+    const label = type === 'notice' ? '공지' : '업데이트';
+    const message = `[새 ${label}] ${result.title}\n${result.date}\n\n${result.content}\n\n${result.link}`;
+
+    console.log(`[NoticeScheduler] 새 ${label} 발견: ${result.title}`);
+
+    if (webhookUrl) {
+      try {
+        const axios = require('axios');
+        await axios.post(webhookUrl, { message, type, item: result });
+        console.log(`[NoticeScheduler] 웹훅 전송 완료 (${label})`);
+      } catch (webhookError) {
+        console.error(`[NoticeScheduler] 웹훅 전송 실패:`, webhookError.message);
+      }
+    }
+  } catch (error) {
+    console.error(`[NoticeScheduler] ${type} 체크 오류:`, error.message);
+  }
+}
+
 app.listen(PORT, () => {
   console.log(`KakaoTalk Bot server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  startNoticeScheduler();
 });
 
-// 프로세스 종료 시 닉네임 DB 저장
+// 프로세스 종료 시 DB 저장
 process.on('SIGINT', () => {
   nicknameService.close();
+  noticeService.close();
   process.exit(0);
 });
 process.on('SIGTERM', () => {
   nicknameService.close();
+  noticeService.close();
   process.exit(0);
 });

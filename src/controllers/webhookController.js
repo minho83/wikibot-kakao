@@ -2,12 +2,14 @@ const express = require('express');
 const { MessageParser } = require('../utils/messageParser');
 const { SearchService } = require('../services/searchService');
 const { CommunityService } = require('../services/communityService');
+const { NoticeService } = require('../services/noticeService');
 const { ResponseFormatter } = require('../utils/responseFormatter');
 
 const router = express.Router();
 const messageParser = new MessageParser();
 const searchService = new SearchService();
 const communityService = new CommunityService();
+const noticeService = new NoticeService();
 const responseFormatter = new ResponseFormatter();
 
 // 서버 시작 시 검색 인덱스 초기화
@@ -140,6 +142,46 @@ router.post('/kakao', async (req, res) => {
           } catch (e) {
             result = { success: false, message: '게시판 검색 중 오류가 발생했습니다.' };
           }
+        }
+        break;
+      case '!공지':
+        try {
+          const noticeResult = await noticeService.getLatestNotice(parsedMessage.query);
+          if (noticeResult.success) {
+            const d = noticeResult.data;
+            let msg = `[${d.category || '공지'}] ${d.title}\n${d.date}\n\n${d.content}\n\n${d.link}`;
+            if (d.otherNotices && d.otherNotices.length > 0) {
+              msg += '\n\n-- 다른 공지 --\n';
+              d.otherNotices.forEach((r, idx) => {
+                msg += `${idx + 1}. [${r.category || ''}] ${r.title} (${r.date})\n`;
+              });
+            }
+            result = { success: true, message: msg };
+          } else {
+            result = noticeResult;
+          }
+        } catch (e) {
+          result = { success: false, message: '공지사항 조회 중 오류가 발생했습니다.' };
+        }
+        break;
+      case '!업데이트':
+        try {
+          const updateResult = await noticeService.getLatestUpdate(parsedMessage.query);
+          if (updateResult.success) {
+            const d = updateResult.data;
+            let msg = `${d.title}\n${d.date}\n\n${d.content}\n\n${d.link}`;
+            if (d.otherUpdates && d.otherUpdates.length > 0) {
+              msg += '\n\n-- 다른 업데이트 --\n';
+              d.otherUpdates.forEach((r, idx) => {
+                msg += `${idx + 1}. ${r.title} (${r.date})\n`;
+              });
+            }
+            result = { success: true, message: msg };
+          } else {
+            result = updateResult;
+          }
+        } catch (e) {
+          result = { success: false, message: '업데이트 조회 중 오류가 발생했습니다.' };
         }
         break;
       case '!도움말':
