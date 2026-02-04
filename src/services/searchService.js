@@ -59,6 +59,7 @@ class SearchService {
     items.forEach(item => {
       item.category = 'item';
       item.categoryName = this.getItemCategoryName(item.type);
+      if (item.description) item.description = this.stripColorCodes(item.description);
     });
 
     // 기술 로드 (skills)
@@ -74,6 +75,7 @@ class SearchService {
     skills.forEach(skill => {
       skill.category = 'skill';
       skill.categoryName = '기술';
+      if (skill.description) skill.description = this.stripColorCodes(skill.description);
 
       // 기술 습득 조건 조인
       const actionResult = this.db.exec(`
@@ -108,6 +110,7 @@ class SearchService {
     spells.forEach(spell => {
       spell.category = 'spell';
       spell.categoryName = '마법';
+      if (spell.description) spell.description = this.stripColorCodes(spell.description);
 
       // 마법 습득 조건 조인
       const actionResult = this.db.exec(`
@@ -165,6 +168,11 @@ class SearchService {
     if (shieldTypes.includes(type)) return '방패';
     if (accessoryTypes.includes(type)) return '악세서리';
     return type || '기타';
+  }
+
+  // 게임 컬러 코드 제거 ({=A ~ {=z)
+  stripColorCodes(str) {
+    return str.replace(/\{=[A-Za-z]/g, '');
   }
 
   buildSearchIndex() {

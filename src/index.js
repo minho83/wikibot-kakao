@@ -116,9 +116,25 @@ app.post('/ask', async (req, res) => {
         if (item.category === 'item') {
           if (item.level) answer += `   레벨: ${item.level}`;
           if (item.job) answer += ` | 직업: ${item.job}`;
-          if (item.ac) answer += ` | AC: ${item.ac}`;
+          if (item.ac != null && item.ac !== 0) answer += ` | AC: ${item.ac}`;
+          if (item.magicDefense) answer += ` | 마방: ${item.magicDefense}`;
           if (item.smallDamage || item.largeDamage) answer += ` | 데미지: ${item.smallDamage || 0}/${item.largeDamage || 0}`;
+          if (item.hitRole) answer += ` | 명중: ${item.hitRole}`;
+          if (item.damRole) answer += ` | 추뎀: ${item.damRole}`;
           answer += '\n';
+          if (item.hp || item.mp) {
+            let hpmp = '  ';
+            if (item.hp) hpmp += ` HP: ${item.hp}`;
+            if (item.mp) hpmp += ` MP: ${item.mp}`;
+            answer += hpmp + '\n';
+          }
+          const stats = [];
+          if (item.str) stats.push(`STR${item.str > 0 ? '+' : ''}${item.str}`);
+          if (item.dex) stats.push(`DEX${item.dex > 0 ? '+' : ''}${item.dex}`);
+          if (item.int) stats.push(`INT${item.int > 0 ? '+' : ''}${item.int}`);
+          if (item.wis) stats.push(`WIS${item.wis > 0 ? '+' : ''}${item.wis}`);
+          if (item.con) stats.push(`CON${item.con > 0 ? '+' : ''}${item.con}`);
+          if (stats.length > 0) answer += `   스탯: ${stats.join(' ')}\n`;
         }
 
         // 마법 정보
@@ -129,11 +145,11 @@ app.post('/ask', async (req, res) => {
           answer += '\n';
           // 스탯 요구사항 (0이 아닌 것만)
           const stats = [];
-          if (item.needStr && item.needStr > 0) stats.push(`힘${item.needStr}`);
-          if (item.needDex && item.needDex > 0) stats.push(`민${item.needDex}`);
-          if (item.needInt && item.needInt > 0) stats.push(`지${item.needInt}`);
-          if (item.needWis && item.needWis > 0) stats.push(`정${item.needWis}`);
-          if (item.needCon && item.needCon > 0) stats.push(`체${item.needCon}`);
+          if (item.needStr && item.needStr > 0) stats.push(`STR ${item.needStr}`);
+          if (item.needDex && item.needDex > 0) stats.push(`DEX ${item.needDex}`);
+          if (item.needInt && item.needInt > 0) stats.push(`INT ${item.needInt}`);
+          if (item.needWis && item.needWis > 0) stats.push(`WIS ${item.needWis}`);
+          if (item.needCon && item.needCon > 0) stats.push(`CON ${item.needCon}`);
           if (stats.length > 0) answer += `   요구스탯: ${stats.join(' ')}\n`;
           if (item.needItem) answer += `   필요아이템: ${item.needItem}\n`;
         }
@@ -145,11 +161,11 @@ app.post('/ask', async (req, res) => {
           answer += '\n';
           // 스탯 요구사항 (0이 아닌 것만)
           const stats = [];
-          if (item.needStr && item.needStr > 0) stats.push(`힘${item.needStr}`);
-          if (item.needDex && item.needDex > 0) stats.push(`민${item.needDex}`);
-          if (item.needInt && item.needInt > 0) stats.push(`지${item.needInt}`);
-          if (item.needWis && item.needWis > 0) stats.push(`정${item.needWis}`);
-          if (item.needCon && item.needCon > 0) stats.push(`체${item.needCon}`);
+          if (item.needStr && item.needStr > 0) stats.push(`STR ${item.needStr}`);
+          if (item.needDex && item.needDex > 0) stats.push(`DEX ${item.needDex}`);
+          if (item.needInt && item.needInt > 0) stats.push(`INT ${item.needInt}`);
+          if (item.needWis && item.needWis > 0) stats.push(`WIS ${item.needWis}`);
+          if (item.needCon && item.needCon > 0) stats.push(`CON ${item.needCon}`);
           if (stats.length > 0) answer += `   요구스탯: ${stats.join(' ')}\n`;
           if (item.needItem) answer += `   필요아이템: ${item.needItem}\n`;
         }
@@ -201,9 +217,25 @@ app.post('/ask/item', async (req, res) => {
 
         if (item.level) answer += `   레벨: ${item.level}`;
         if (item.job) answer += ` | 직업: ${item.job}`;
-        if (item.ac) answer += ` | AC: ${item.ac}`;
+        if (item.ac != null && item.ac !== 0) answer += ` | AC: ${item.ac}`;
+        if (item.magicDefense) answer += ` | 마방: ${item.magicDefense}`;
         if (item.smallDamage || item.largeDamage) answer += ` | 데미지: ${item.smallDamage || 0}/${item.largeDamage || 0}`;
+        if (item.hitRole) answer += ` | 명중: ${item.hitRole}`;
+        if (item.damRole) answer += ` | 추뎀: ${item.damRole}`;
         answer += '\n';
+        if (item.hp || item.mp) {
+          let hpmp = '  ';
+          if (item.hp) hpmp += ` HP: ${item.hp}`;
+          if (item.mp) hpmp += ` MP: ${item.mp}`;
+          answer += hpmp + '\n';
+        }
+        const stats = [];
+        if (item.str) stats.push(`STR${item.str > 0 ? '+' : ''}${item.str}`);
+        if (item.dex) stats.push(`DEX${item.dex > 0 ? '+' : ''}${item.dex}`);
+        if (item.int) stats.push(`INT${item.int > 0 ? '+' : ''}${item.int}`);
+        if (item.wis) stats.push(`WIS${item.wis > 0 ? '+' : ''}${item.wis}`);
+        if (item.con) stats.push(`CON${item.con > 0 ? '+' : ''}${item.con}`);
+        if (stats.length > 0) answer += `   스탯: ${stats.join(' ')}\n`;
 
         if (item.description) answer += `   ${item.description}\n`;
         sources.push({ title: title, url: '', score: 0 });
@@ -258,11 +290,11 @@ app.post('/ask/skill', async (req, res) => {
 
         // 스탯 요구사항 (0이 아닌 것만)
         const stats = [];
-        if (item.needStr && item.needStr > 0) stats.push(`힘${item.needStr}`);
-        if (item.needDex && item.needDex > 0) stats.push(`민${item.needDex}`);
-        if (item.needInt && item.needInt > 0) stats.push(`지${item.needInt}`);
-        if (item.needWis && item.needWis > 0) stats.push(`정${item.needWis}`);
-        if (item.needCon && item.needCon > 0) stats.push(`체${item.needCon}`);
+        if (item.needStr && item.needStr > 0) stats.push(`STR ${item.needStr}`);
+        if (item.needDex && item.needDex > 0) stats.push(`DEX ${item.needDex}`);
+        if (item.needInt && item.needInt > 0) stats.push(`INT ${item.needInt}`);
+        if (item.needWis && item.needWis > 0) stats.push(`WIS ${item.needWis}`);
+        if (item.needCon && item.needCon > 0) stats.push(`CON ${item.needCon}`);
         if (stats.length > 0) answer += `   요구스탯: ${stats.join(' ')}\n`;
 
         if (item.needItem) answer += `   필요아이템: ${item.needItem}\n`;

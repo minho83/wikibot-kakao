@@ -98,7 +98,9 @@ class CommunityService {
 
             let text = boardText.text().trim();
 
-            // Simple Cleanup: remove excessive newlines
+            // 구분선 정리 (----, ====, ~~~~ 등 3개 이상 반복되는 기호)
+            text = text.replace(/[-=~_]{3,}/g, '---');
+            // 연속 공백/빈줄 정리
             text = text.replace(/\n\s*\n/g, '\n').trim();
 
             return text;
