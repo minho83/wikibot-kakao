@@ -565,6 +565,10 @@ class TradeService {
       .replace(/팝니다|삽니다|팜니다|판매합니다|구매합니다|구합니다|교환/g, '')
       .trim();
 
+    // 단위 표현 추출 (개당, 장당 등) → 옵션에 보존
+    const unitMatch = remaining.match(/(\d*)(개당|장당|묶음당|셋당|벌당)/);
+    const priceUnit = unitMatch ? (unitMatch[1] ? `${unitMatch[1]}${unitMatch[2]}` : unitMatch[2]) : null;
+
     // 아이템명 정규화
     const itemName = this._normalizeItemName(remaining);
     if (!itemName || itemName.length < 1) return null;
@@ -572,12 +576,16 @@ class TradeService {
     // 정식명 찾기
     const canonical = this.aliasMap.get(itemName) || itemName;
 
+    // 옵션 합치기 (기존 옵션 + 단위)
+    const allOptions = [...optResult.options];
+    if (priceUnit) allOptions.push(priceUnit);
+
     return {
       item_name: remaining.trim() || itemName,
       canonical_name: canonical,
       enhancement: enhResult.level,
       item_level: lvlResult.level,
-      item_options: optResult.options.length > 0 ? optResult.options.join(',') : null,
+      item_options: allOptions.length > 0 ? allOptions.join(',') : null,
       trade_type: tradeType,
       price: priceResult.price,
       price_unit: priceResult.unit,
@@ -888,6 +896,15 @@ class TradeService {
       ORDER BY enhancement ASC, item_level ASC, cnt DESC
     `, [canonical, dateLimitStr]);
 
+    // 단위 표현(개당 등) 포함 거래 비율 확인
+    const unitCheck = this.db.exec(`
+      SELECT COUNT(*) as unit_cnt FROM trades
+      WHERE canonical_name = ? AND trade_date >= ?
+        AND (item_options LIKE '%개당%' OR item_options LIKE '%장당%'
+          OR item_options LIKE '%묶음당%' OR item_options LIKE '%셋당%')
+    `, [canonical, dateLimitStr]);
+    const hasUnitPricing = unitCheck.length > 0 && unitCheck[0].values[0][0] > 0;
+
     if (result.length === 0 || result[0].values.length === 0) {
       return { answer: `"${canonical}"의 최근 ${days}일 시세 데이터가 없습니다.`, sources: [] };
     }
@@ -912,7 +929,8 @@ class TradeService {
       entry.total.max = Math.max(entry.total.max, max);
     }
 
-    let lines = [`[시세] ${canonical}`];
+    const unitNote = hasUnitPricing ? ' (개당가 포함)' : '';
+    let lines = [`[시세] ${canonical}${unitNote}`];
     lines.push('━━━━━━━━━━━━');
 
     const enhKeys = Object.keys(enhMap).sort((a, b) => {
@@ -974,6 +992,15 @@ class TradeService {
     return { answer: lines.join('\n').trim(), sources: [] };
   }
 
+  /**
+   * item_options에서 단위 표현(개당, 장당 등) 추출
+   */
+  _extractUnitFromOptions(optionsStr) {
+    if (!optionsStr) return '';
+    const match = optionsStr.match(/(\d*(?:개당|장당|묶음당|셋당|벌당))/);
+    return match ? ` (${match[1]})` : '';
+  }
+
   _formatResponse(canonical, enhancement, stats, recentTrades, days) {
     const unitLabels = { gj: 'ㄱㅈ', won: '만원', eok: '억' };
     const enhStr = enhancement > 0 ? ` ${enhancement}강` : '';
@@ -1008,7 +1035,8 @@ class TradeService {
         const typeTag = t.trade_type === 'sell' ? '[판]' : t.trade_type === 'buy' ? '[구]' : '[교]';
         const unitLabel = unitLabels[t.price_unit] || '';
         const dateShort = t.trade_date ? t.trade_date.substring(5).replace('-', '/') : '';
-        lines.push(`· ${typeTag} ${t.price}${unitLabel} (${dateShort})`);
+        const unitInfo = this._extractUnitFromOptions(t.item_options);
+        lines.push(`· ${typeTag} ${t.price}${unitLabel}${unitInfo} (${dateShort})`);
       }
     }
 
