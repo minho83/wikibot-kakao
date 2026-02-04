@@ -980,12 +980,15 @@ class TradeService {
     }
     const hasMixedUnits = pricingUnitsSet.size > 1 || (pricingUnitsSet.size === 1 && !pricingUnitsSet.has(''));
 
-    // 강화 종류 파악 (노강만 있는지 체크)
+    // 강화 종류 파악 (필터링 후 표시될 데이터만 기준)
+    // → 묶음 아이템의 경우 '' (기타), '개당' 노이즈 제외 후 판단
     const enhancementSet = new Set();
     for (const row of result[0].values) {
+      const puKey = row[4] || '';
+      if (isBundleItem && puKey === '') continue;
       enhancementSet.add(`${row[0] || 0}_${row[1] || 0}`);
     }
-    const onlyNoEnhancement = enhancementSet.size === 1 && enhancementSet.has('0_0');
+    let onlyNoEnhancement = enhancementSet.size <= 1 && (enhancementSet.size === 0 || enhancementSet.has('0_0'));
 
     // 단위별 → 강화+레벨별 그룹화
     const pricingGroups = {};
@@ -1028,6 +1031,16 @@ class TradeService {
     let crossVal = null;
     if (isBundleItem) {
       crossVal = this._crossValidateUnits(pricingGroups, hasGjData ? 'gj' : 'won');
+      // 개당 노이즈도 제외 후 강화 종류 재판정
+      if (crossVal?.shouldSkipRawPerUnit) {
+        const filteredEnh = new Set();
+        for (const row of result[0].values) {
+          const puKey = row[4] || '';
+          if (puKey === '' || puKey === '개당') continue;
+          filteredEnh.add(`${row[0] || 0}_${row[1] || 0}`);
+        }
+        onlyNoEnhancement = filteredEnh.size <= 1 && (filteredEnh.size === 0 || filteredEnh.has('0_0'));
+      }
     }
 
     for (const pricingUnit of sortedPricingUnits) {
