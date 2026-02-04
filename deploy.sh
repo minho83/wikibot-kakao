@@ -50,6 +50,7 @@ docker run -d \
     -p 8100:3000 \
     -v "$DATA_DIR/nickname.db:/app/nickname.db" \
     -v "$DATA_DIR/notice.db:/app/notice.db" \
+    -v "$DATA_DIR/trade.db:/app/trade.db" \
     ${ENV_FILE:+--env-file "$ENV_FILE"} \
     "$IMAGE_NAME" >> "$LOG_FILE" 2>&1
 

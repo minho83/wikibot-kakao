@@ -9,6 +9,7 @@ const { SearchService } = require('./services/searchService');
 const { CommunityService } = require('./services/communityService');
 const { NicknameService } = require('./services/nicknameService');
 const { NoticeService } = require('./services/noticeService');
+const { TradeService } = require('./services/tradeService');
 const { rateLimiter, errorHandler } = require('./middleware');
 
 const app = express();
@@ -17,6 +18,7 @@ const searchService = new SearchService();
 const communityService = new CommunityService();
 const nicknameService = new NicknameService();
 const noticeService = new NoticeService();
+const tradeService = new TradeService();
 
 // 검색 서비스 초기화
 let initialized = false;
@@ -25,6 +27,7 @@ const initializeService = async () => {
     await searchService.initialize();
     await nicknameService.initialize();
     await noticeService.initialize();
+    await tradeService.initialize();
     setNicknameService(nicknameService);
     initialized = true;
   }
@@ -481,6 +484,128 @@ app.get('/ask/check-new', async (req, res) => {
   }
 });
 
+// ── 거래 시세 API ──────────────────────────────────────
+
+// 실시간 거래 메시지 수집
+app.post('/api/trade/collect', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { message, sender_name, sender_level, server, trade_date, message_time } = req.body;
+    if (!message) return res.status(400).json({ success: false, message: 'message required' });
+
+    const senderInfo = { name: sender_name, level: sender_level, server };
+    const date = trade_date || new Date().toISOString().split('T')[0];
+    const trades = tradeService.collectMessage(message, senderInfo, date, message_time);
+
+    res.json({ success: true, count: trades.length });
+  } catch (error) {
+    console.error('Trade collect error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 시세 조회
+app.post('/api/trade/query', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { query, days } = req.body;
+    if (!query) return res.status(400).json({ answer: '아이템명을 입력해주세요.', sources: [] });
+
+    const result = tradeService.queryPrice(query, { days: days || 30 });
+    res.json(result);
+  } catch (error) {
+    console.error('Trade query error:', error);
+    res.status(500).json({ answer: '시세 조회 중 오류가 발생했습니다.', sources: [] });
+  }
+});
+
+// 배치 임포트
+app.post('/api/trade/import', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { file_path } = req.body;
+    if (!file_path) return res.status(400).json({ success: false, message: 'file_path required' });
+
+    const stats = await tradeService.importKakaoExport(file_path);
+    res.json({ success: true, ...stats });
+  } catch (error) {
+    console.error('Trade import error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 거래 통계
+app.get('/api/trade/stats', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    res.json(tradeService.getStats());
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 별칭 추가
+app.post('/api/trade/alias', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { alias, canonical_name, category } = req.body;
+    if (!alias || !canonical_name) {
+      return res.status(400).json({ success: false, message: 'alias and canonical_name required' });
+    }
+    const result = tradeService.addAlias(alias, canonical_name, category);
+    res.json({ success: result });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 가격 방 설정 확인
+app.post('/api/trade/room-check', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { room_id } = req.body;
+    const room = tradeService.getTradeRoom(room_id);
+    res.json({ success: true, room });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 가격 방 추가
+app.post('/api/trade/rooms', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { room_id, room_name, collect } = req.body;
+    if (!room_id) return res.status(400).json({ success: false, message: 'room_id required' });
+    const result = tradeService.addTradeRoom(room_id, room_name, !!collect);
+    const mode = collect ? '수집+조회' : '조회';
+    res.json({ success: result, message: result ? `가격 ${mode}방이 추가되었습니다.` : '추가 실패' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 가격 방 제거
+app.delete('/api/trade/rooms/:roomId', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const result = tradeService.removeTradeRoom(req.params.roomId);
+    res.json({ success: result, message: result ? '가격방이 제거되었습니다.' : '제거 실패' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 가격 방 목록
+app.get('/api/trade/rooms', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    res.json({ success: true, rooms: tradeService.listTradeRooms() });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 app.use('/api/nickname', nicknameController);
 app.use('/webhook', rateLimiter, webhookController);
 
@@ -586,10 +711,12 @@ app.listen(PORT, () => {
 process.on('SIGINT', () => {
   nicknameService.close();
   noticeService.close();
+  tradeService.close();
   process.exit(0);
 });
 process.on('SIGTERM', () => {
   nicknameService.close();
   noticeService.close();
+  tradeService.close();
   process.exit(0);
 });

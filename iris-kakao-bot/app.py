@@ -129,10 +129,87 @@ def log_member_event(user_id, nickname, room_id, event_type):
     return ""
 
 
+# ── 거래 가격 ────────────────────────────────────────────
+
+# 방 설정 캐시 (5분마다 갱신)
+_room_cache = {}
+_room_cache_time = 0
+ROOM_CACHE_TTL = 300  # 5분
+
+
+def check_trade_room(chat_id):
+    """방 설정 조회 (캐시). 반환: {'collect': bool} 또는 None"""
+    global _room_cache, _room_cache_time
+    now = time.time()
+    if now - _room_cache_time > ROOM_CACHE_TTL:
+        _room_cache = {}
+        _room_cache_time = now
+
+    if chat_id in _room_cache:
+        return _room_cache[chat_id]
+
+    try:
+        resp = requests.post(
+            f"{WIKIBOT_URL}/api/trade/room-check",
+            json={"room_id": chat_id},
+            timeout=5,
+        )
+        data = resp.json()
+        room = data.get("room") if data.get("success") else None
+        _room_cache[chat_id] = room
+        return room
+    except Exception:
+        return None
+
+
+def collect_trade_message(msg, sender, chat_id):
+    """거래방 메시지를 wikibot에 전달하여 시세 수집"""
+    try:
+        # 발신자 정보 파싱
+        sender_name = sender
+        sender_level = None
+        server = None
+
+        parts = sender.split('/')
+        if len(parts) >= 2:
+            sender_name = parts[0].strip()
+            for p in parts[1:]:
+                p = p.strip()
+                if p.isdigit():
+                    sender_level = int(p)
+                elif p in ('세오', '베라', '도가', '세오의서'):
+                    server = p
+        else:
+            space_parts = sender.split()
+            if len(space_parts) >= 2:
+                sender_name = space_parts[0]
+                for p in space_parts[1:]:
+                    if p.isdigit():
+                        sender_level = int(p)
+                    elif p in ('세오', '베라', '도가'):
+                        server = p
+
+        today = datetime.now().strftime('%Y-%m-%d')
+        requests.post(
+            f"{WIKIBOT_URL}/api/trade/collect",
+            json={
+                "message": msg,
+                "sender_name": sender_name,
+                "sender_level": sender_level,
+                "server": server,
+                "trade_date": today,
+            },
+            timeout=5,
+        )
+    except Exception as e:
+        logger.error(f"거래 수집 오류: {e}")
+
+
 # ── 관리자 명령 ───────────────────────────────────────────
 
 def handle_admin_command(msg, sender_id, room_id=None):
     """관리자 명령 처리. 응답 메시지 반환."""
+    global _room_cache, _room_cache_time
 
     if msg.startswith("!관리자등록"):
         try:
@@ -228,6 +305,74 @@ def handle_admin_command(msg, sender_id, room_id=None):
         except Exception as e:
             logger.error(f"이력 조회 오류: {e}")
             return "이력 조회 중 오류가 발생했습니다."
+
+    # ── 가격 방 설정 ──
+    if msg.startswith("!가격설정 추가") or msg.startswith("!가격설정 수집"):
+        is_collect = msg.startswith("!가격설정 수집")
+        parts = msg.split()
+        if len(parts) < 3:
+            return "사용법: !가격설정 추가 [room_id] [방이름(선택)]\n!가격설정 수집 [room_id] [방이름(선택)]\n\n추가: 가격 조회만 가능\n수집: 시세 수집 + 가격 조회"
+        target_room = parts[2]
+        room_name = " ".join(parts[3:]) if len(parts) > 3 else ""
+        try:
+            resp = requests.post(
+                f"{WIKIBOT_URL}/api/trade/rooms",
+                json={"admin_id": sender_id, "room_id": target_room, "room_name": room_name, "collect": is_collect},
+                timeout=5,
+            )
+            data = resp.json()
+            # 캐시 초기화
+            _room_cache.clear()
+            _room_cache_time = 0
+            return data.get("message", "처리 완료")
+        except Exception as e:
+            logger.error(f"가격 방 추가 오류: {e}")
+            return "가격 방 추가 중 오류가 발생했습니다."
+
+    if msg.startswith("!가격설정 제거"):
+        parts = msg.split()
+        if len(parts) < 3:
+            return "사용법: !가격설정 제거 [room_id]"
+        target_room = parts[2]
+        try:
+            resp = requests.delete(
+                f"{WIKIBOT_URL}/api/trade/rooms/{target_room}",
+                json={"admin_id": sender_id},
+                timeout=5,
+            )
+            data = resp.json()
+            # 캐시 초기화
+            _room_cache.clear()
+            return data.get("message", "처리 완료")
+        except Exception as e:
+            logger.error(f"가격 방 제거 오류: {e}")
+            return "가격 방 제거 중 오류가 발생했습니다."
+
+    if msg.startswith("!가격설정 목록"):
+        try:
+            resp = requests.get(
+                f"{WIKIBOT_URL}/api/trade/rooms",
+                params={"admin_id": sender_id},
+                timeout=5,
+            )
+            data = resp.json()
+            if not data.get("success"):
+                return data.get("message", "조회 실패")
+            rooms = data.get("rooms", [])
+            if not rooms:
+                return "설정된 가격 방이 없습니다."
+            lines = ["[가격 방 목록]"]
+            for r in rooms:
+                mode = "수집+조회" if r.get("collect") else "조회만"
+                name = r.get("room_name") or r.get("room_id")
+                lines.append(f"- {name} ({r.get('room_id')}) [{mode}]")
+            return "\n".join(lines)
+        except Exception as e:
+            logger.error(f"가격 방 목록 오류: {e}")
+            return "가격 방 목록 조회 중 오류가 발생했습니다."
+
+    if msg.startswith("!가격설정"):
+        return "사용법:\n!가격설정 추가 [room_id] [방이름] - 조회만\n!가격설정 수집 [room_id] [방이름] - 수집+조회\n!가격설정 제거 [room_id]\n!가격설정 목록"
 
     if msg.startswith("!서버재시작"):
         try:
@@ -326,14 +471,38 @@ def webhook():
 
         logger.info(f"[{room}] {sender}: {msg}")
 
-        # ── 닉네임 변경 체크 (모든 메시지) ──
-        if user_id and chat_id:
+        # ── 방 설정 조회 ──
+        msg_stripped = msg.strip()
+        trade_room = check_trade_room(chat_id)
+        is_collect_room = trade_room and trade_room.get('collect')
+        is_price_room = trade_room is not None  # 수집방 또는 조회방
+
+        # ── 닉네임 변경 체크 (수집방 제외) ──
+        if not is_collect_room and user_id and chat_id:
             notification = check_nickname(sender, user_id, chat_id)
             if notification:
                 send_reply(chat_id, notification)
 
-        # ── 명령어 처리 ──
-        msg_stripped = msg.strip()
+        # ── 수집방: 자동 수집 + !가격만 응답 ──
+        if is_collect_room:
+            if not msg_stripped.startswith('!'):
+                collect_trade_message(msg, sender, chat_id)
+                return jsonify({"status": "ok"})
+
+            # 수집방에서는 !가격만 허용
+            if msg_stripped.startswith("!가격") and not msg_stripped.startswith("!가격설정"):
+                query = msg_stripped[3:].strip()
+                if query:
+                    result = ask_wikibot("/api/trade/query", query)
+                    if result:
+                        send_reply(chat_id, result.get("answer", "가격 정보가 없습니다."))
+                    else:
+                        send_reply(chat_id, "가격 조회에 실패했습니다.")
+                else:
+                    send_reply(chat_id, "사용법: !가격 [아이템명]\n예: !가격 암목\n예: !가격 5강 나겔반지")
+            return jsonify({"status": "ok"})
+
+        # ── 명령어 처리 (일반 방) ──
         response_msg = None
 
         # 방 확인
@@ -341,7 +510,7 @@ def webhook():
             response_msg = f"[방 정보]\nroom: {room}\nchat_id: {chat_id}\nsender: {sender}\nuser_id: {user_id}"
 
         # 관리자 명령 (DM 또는 그룹)
-        elif msg_stripped.startswith("!관리자등록") or msg_stripped.startswith("!닉변감지") or msg_stripped.startswith("!닉변이력"):
+        elif msg_stripped.startswith("!관리자등록") or msg_stripped.startswith("!닉변감지") or msg_stripped.startswith("!닉변이력") or msg_stripped.startswith("!가격설정"):
             result = handle_admin_command(msg_stripped, user_id, room_id=chat_id)
             if result:
                 response_msg = result
@@ -389,6 +558,19 @@ def webhook():
             result = ask_wikibot("/ask/update", query)
             response_msg = format_search_result(result, sender)
 
+        # 가격 조회 (설정된 방에서만)
+        elif msg_stripped.startswith("!가격") and not msg_stripped.startswith("!가격설정"):
+            if is_price_room:
+                query = msg_stripped[3:].strip()
+                if query:
+                    result = ask_wikibot("/api/trade/query", query)
+                    if result:
+                        response_msg = result.get("answer", "가격 정보가 없습니다.")
+                    else:
+                        response_msg = "가격 조회에 실패했습니다."
+                else:
+                    response_msg = "사용법: !가격 [아이템명]\n예: !가격 암목\n예: !가격 5강 나겔반지"
+
         # 통합 검색
         elif msg_stripped.startswith("!검색") or msg_stripped.startswith("!질문"):
             query = msg_stripped[3:].strip()
@@ -405,6 +587,7 @@ def webhook():
 !스킬 [이름] - 스킬/마법 검색
 !게시판 [키워드] - 게시판 검색
 !검색 [키워드] - 통합 검색
+!가격 [아이템명] - 거래 시세 조회
 !공지 [날짜] - 공지사항 (예: !공지 2/5)
 !업데이트 [날짜] - 업데이트 내역
 
