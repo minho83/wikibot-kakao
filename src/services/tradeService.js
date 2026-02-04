@@ -248,7 +248,7 @@ class TradeService {
 
   /**
    * 아이템 레벨 추출
-   * "1렙", "9/10", "10/11" 등
+   * "1렙", "9/10", "10/11", "10 11쌍" 등
    */
   _extractItemLevel(text) {
     // N렙 패턴
@@ -263,8 +263,16 @@ class TradeService {
     const slashMatch = text.match(/(\d{1,2})\/(\d{1,2})/);
     if (slashMatch) {
       return {
-        level: parseInt(slashMatch[2]),  // 높은 쪽 레벨
+        level: parseInt(slashMatch[2]),
         cleaned: text.replace(/\d{1,2}\/\d{1,2}/, '').trim()
+      };
+    }
+    // N N쌍 패턴 (나겔반지 10 11쌍 등) - 두 숫자가 연속으로 나오면 레벨
+    const spacePairMatch = text.match(/(\d{1,2})\s+(\d{1,2})(?=쌍|셋)/);
+    if (spacePairMatch) {
+      return {
+        level: parseInt(spacePairMatch[2]),
+        cleaned: text.replace(/\d{1,2}\s+\d{1,2}/, '').trim()
       };
     }
     return { level: 0, cleaned: text };
