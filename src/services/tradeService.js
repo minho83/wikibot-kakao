@@ -1086,8 +1086,9 @@ class TradeService {
           prefix = `${label}: `;
         }
 
-        const sellStr = data.sell ? `[판]${data.sell.count > 1 ? '평균' : ''}${data.sell.avg}` : null;
-        const buyStr = data.buy ? `[구]${data.buy.count > 1 ? '평균' : ''}${data.buy.avg}` : null;
+        const uSuffix = unitLabels[displayUnit];
+        const sellStr = data.sell ? `[판]${data.sell.count > 1 ? '평균' : ''}${data.sell.avg}${uSuffix}` : null;
+        const buyStr = data.buy ? `[구]${data.buy.count > 1 ? '평균' : ''}${data.buy.avg}${uSuffix}` : null;
 
         if (sellStr && buyStr) {
           lines.push(`· ${prefix}${sellStr} ${buyStr} (${data.total.count}건)`);
@@ -1293,15 +1294,15 @@ class TradeService {
         }
 
         if (data.sellAvg !== null && data.buyAvg !== null) {
-          lines.push(`· [판] ${data.sellCount > 1 ? '평균 ' : ''}${data.sellAvg} (${data.sellCount}건)`);
-          lines.push(`· [구] ${data.buyCount > 1 ? '평균 ' : ''}${data.buyAvg} (${data.buyCount}건)`);
+          lines.push(`· [판] ${data.sellCount > 1 ? '평균 ' : ''}${data.sellAvg}${unitLabel} (${data.sellCount}건)`);
+          lines.push(`· [구] ${data.buyCount > 1 ? '평균 ' : ''}${data.buyAvg}${unitLabel} (${data.buyCount}건)`);
         } else if (data.sellAvg !== null) {
-          lines.push(`· [판] ${data.sellCount > 1 ? '평균 ' : ''}${data.sellAvg} (${data.sellCount}건)`);
+          lines.push(`· [판] ${data.sellCount > 1 ? '평균 ' : ''}${data.sellAvg}${unitLabel} (${data.sellCount}건)`);
         } else if (data.buyAvg !== null) {
-          lines.push(`· [구] ${data.buyCount > 1 ? '평균 ' : ''}${data.buyAvg} (${data.buyCount}건)`);
+          lines.push(`· [구] ${data.buyCount > 1 ? '평균 ' : ''}${data.buyAvg}${unitLabel} (${data.buyCount}건)`);
         }
         if (data.min !== data.max) {
-          lines.push(`· 범위: ${data.min} ~ ${data.max}`);
+          lines.push(`· 범위: ${data.min} ~ ${data.max}${unitLabel}`);
         }
         lines.push(`· ${data.count}건 집계`);
       }
