@@ -447,7 +447,7 @@ def handle_admin_command(msg, sender_id, room_id=None):
         return "사용법:\n!별칭 추가 [줄임말] [정식명]\n!별칭 삭제 [줄임말]\n!별칭 목록"
 
     # ── 가격 데이터 정리 ──
-    if msg.startswith("!가격정리"):
+    if msg.startswith("!시세정리"):
         parts = msg.split()
         since_date = parts[1] if len(parts) >= 2 else None
         try:
@@ -594,8 +594,15 @@ def webhook():
                 collect_trade_message(msg, sender, chat_id)
                 return jsonify({"status": "ok"})
 
+            # 수집방에서도 관리자 명령 허용
+            if msg_stripped.startswith("!가격설정") or msg_stripped.startswith("!시세정리") or msg_stripped.startswith("!별칭"):
+                result = handle_admin_command(msg_stripped, user_id, room_id=chat_id)
+                if result:
+                    send_reply(chat_id, result)
+                return jsonify({"status": "ok"})
+
             # 수집방에서는 !가격만 허용
-            if msg_stripped.startswith("!가격") and not msg_stripped.startswith("!가격설정"):
+            if msg_stripped.startswith("!가격"):
                 query = msg_stripped[3:].strip()
                 if query:
                     result = ask_wikibot("/api/trade/query", query)
@@ -615,7 +622,7 @@ def webhook():
             response_msg = f"[방 정보]\nroom: {room}\nchat_id: {chat_id}\nsender: {sender}\nuser_id: {user_id}"
 
         # 관리자 명령 (DM 또는 그룹)
-        elif msg_stripped.startswith("!관리자등록") or msg_stripped.startswith("!닉변감지") or msg_stripped.startswith("!닉변이력") or msg_stripped.startswith("!가격설정") or msg_stripped.startswith("!별칭") or msg_stripped.startswith("!가격정리"):
+        elif msg_stripped.startswith("!관리자등록") or msg_stripped.startswith("!닉변감지") or msg_stripped.startswith("!닉변이력") or msg_stripped.startswith("!가격설정") or msg_stripped.startswith("!별칭") or msg_stripped.startswith("!시세정리"):
             result = handle_admin_command(msg_stripped, user_id, room_id=chat_id)
             if result:
                 response_msg = result
@@ -728,9 +735,9 @@ def webhook():
 !별칭 목록
 
 [데이터 관리]
-!가격정리 - 전체 데이터 정리 (LOD_DB 검증)
-!가격정리 [날짜] - 특정일 이후 정리
-  예: !가격정리 2026-02-03
+!시세정리 - 전체 데이터 정리 (LOD_DB 검증)
+!시세정리 [날짜] - 특정일 이후 정리
+  예: !시세정리 2026-02-03
   (매일 04:00 자동 실행)
 
 [닉네임 감시]
