@@ -367,8 +367,9 @@ class PartyService {
       }
 
       // 장소 파싱 (원본 그대로 표시)
+      // 나겔목/나겔반은 장비(목걸이/반지)이므로 제외
       if (!location) {
-        const locMatch = line.match(/[#<>★]*(탑층|상층|고층|설원|필드|나겔[^\s]*)/);
+        const locMatch = line.match(/[#<>★]*(탑층|상층|고층|설원|필드|나겔탑[^\s]*|나겔링|나겔\s*\d층)/);
         if (locMatch) {
           location = locMatch[1];
         }
