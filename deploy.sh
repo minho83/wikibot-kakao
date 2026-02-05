@@ -44,7 +44,7 @@ fi
 mkdir -p "$DB_DIR"
 
 # 기존 repo 내 DB 파일 → data 디렉토리로 마이그레이션 (1회성)
-for db in nickname.db notice.db trade.db; do
+for db in nickname.db notice.db trade.db party.db; do
     if [ -f "$REPO_DIR/$db" ] && [ ! -f "$DB_DIR/$db" ]; then
         cp "$REPO_DIR/$db" "$DB_DIR/$db"
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] DB 마이그레이션: $db → $DB_DIR/" >> "$LOG_FILE"
@@ -64,7 +64,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # DB 파일이 없으면 생성 (디렉토리가 아닌 파일로)
-for db in nickname.db notice.db trade.db; do
+for db in nickname.db notice.db trade.db party.db; do
     if [ ! -f "$DB_DIR/$db" ]; then
         touch "$DB_DIR/$db"
     fi
@@ -73,7 +73,7 @@ done
 # 배포 전 DB 백업 (0바이트가 아닌 경우만)
 BACKUP_DIR="$DB_DIR/backup"
 mkdir -p "$BACKUP_DIR"
-for db in nickname.db notice.db trade.db; do
+for db in nickname.db notice.db trade.db party.db; do
     if [ -s "$DB_DIR/$db" ]; then
         cp "$DB_DIR/$db" "$BACKUP_DIR/${db}.bak"
     fi
@@ -90,6 +90,7 @@ docker run -d \
     -v "$DB_DIR/nickname.db:/app/nickname.db" \
     -v "$DB_DIR/notice.db:/app/notice.db" \
     -v "$DB_DIR/trade.db:/app/trade.db" \
+    -v "$DB_DIR/party.db:/app/party.db" \
     -v "$REPO_DIR/LOD_DB:/app/LOD_DB" \
     ${ENV_FILE:+--env-file "$ENV_FILE"} \
     "$IMAGE_NAME" >> "$LOG_FILE" 2>&1
