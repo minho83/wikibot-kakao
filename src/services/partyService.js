@@ -742,9 +742,10 @@ class PartyService {
     lines.push('');
 
     for (const party of parties) {
-      // 파티 헤더
+      // 파티 헤더: [장소] 시간 @주최자
       const locationName = party.location || '미정';
-      lines.push(`[${locationName}] ${party.time_slot}`);
+      const senderName = party.sender_name ? `@${party.sender_name.split('/')[0]}` : '';
+      lines.push(`[${locationName}] ${party.time_slot} ${senderName}`.trim());
 
       // 빈자리 정보
       const emptyInfo = [];
