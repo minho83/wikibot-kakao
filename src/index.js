@@ -748,6 +748,107 @@ app.post('/api/party/cleanup', async (req, res) => {
 app.use('/api/nickname', nicknameController);
 app.use('/webhook', rateLimiter, webhookController);
 
+// ── DB 통계 API (대시보드용) ──────────────────────────────
+app.get('/api/db/stats', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const fs = require('fs');
+    const path = require('path');
+
+    const dbFiles = ['nickname.db', 'notice.db', 'trade.db', 'party.db'];
+    const stats = {};
+
+    for (const dbFile of dbFiles) {
+      const dbPath = path.join(__dirname, '..', dbFile);
+      try {
+        const fileStat = fs.statSync(dbPath);
+        stats[dbFile] = {
+          size_bytes: fileStat.size,
+          size_mb: (fileStat.size / 1024 / 1024).toFixed(2),
+          modified: fileStat.mtime.toISOString()
+        };
+      } catch (e) {
+        stats[dbFile] = { size_bytes: 0, size_mb: '0.00', modified: null, error: 'not found' };
+      }
+    }
+
+    // 레코드 수 추가
+    try {
+      const tradeStats = tradeService.getStats();
+      stats['trade.db'].records = tradeStats.totalTrades || 0;
+    } catch (e) { stats['trade.db'].records = 0; }
+
+    try {
+      const partyStats = partyService.getStats();
+      stats['party.db'].records = partyStats.totalParties || 0;
+    } catch (e) { stats['party.db'].records = 0; }
+
+    // 닉네임 DB 레코드 수
+    try {
+      const nicknameRooms = nicknameService.listRooms();
+      stats['nickname.db'].rooms = nicknameRooms.length;
+    } catch (e) { stats['nickname.db'].rooms = 0; }
+
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      databases: stats
+    });
+  } catch (error) {
+    console.error('DB stats error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// DB 통계 히스토리 저장 (대시보드 그래프용)
+const dbStatsHistory = [];
+const MAX_HISTORY = 288; // 24시간 * 12 (5분마다)
+
+function recordDbStats() {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const now = new Date();
+
+    const entry = {
+      timestamp: now.toISOString(),
+      hour: now.getHours(),
+      minute: now.getMinutes()
+    };
+
+    const dbFiles = ['nickname.db', 'notice.db', 'trade.db', 'party.db'];
+    for (const dbFile of dbFiles) {
+      const dbPath = path.join(__dirname, '..', dbFile);
+      try {
+        const fileStat = fs.statSync(dbPath);
+        entry[dbFile] = fileStat.size;
+      } catch (e) {
+        entry[dbFile] = 0;
+      }
+    }
+
+    dbStatsHistory.push(entry);
+    if (dbStatsHistory.length > MAX_HISTORY) {
+      dbStatsHistory.shift();
+    }
+  } catch (e) {
+    console.error('recordDbStats error:', e);
+  }
+}
+
+// 5분마다 DB 통계 기록
+setInterval(recordDbStats, 5 * 60 * 1000);
+// 시작 시 즉시 기록
+setTimeout(recordDbStats, 5000);
+
+app.get('/api/db/history', (req, res) => {
+  res.json({
+    success: true,
+    history: dbStatsHistory
+  });
+});
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
