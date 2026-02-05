@@ -176,16 +176,28 @@ class NicknameService {
   }
 
   /**
-   * 특정 방의 닉네임 변경 이력 조회
+   * 특정 방의 닉네임 변경 이력 조회 (변경된 유저만, 그룹화)
    */
-  getNicknameHistory(roomId, limit = 50) {
+  getNicknameHistory(roomId, limit = 30) {
     if (!this.initialized) return [];
 
+    // 닉네임이 2회 이상 기록된 유저만 (=변경된 유저)
     const result = this.db.exec(
-      `SELECT sender_id, sender_name, detected_at
-       FROM nickname_history
-       WHERE room_id = ?
-       ORDER BY id DESC LIMIT ?`,
+      `SELECT sender_id,
+              GROUP_CONCAT(sender_name, ' → ') as changes,
+              MIN(detected_at) as first_seen,
+              MAX(detected_at) as last_changed,
+              COUNT(*) as change_count
+       FROM (
+         SELECT sender_id, sender_name, detected_at
+         FROM nickname_history
+         WHERE room_id = ?
+         ORDER BY id ASC
+       )
+       GROUP BY sender_id
+       HAVING change_count > 1
+       ORDER BY last_changed DESC
+       LIMIT ?`,
       [roomId, limit]
     );
 
