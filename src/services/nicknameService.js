@@ -4,7 +4,11 @@ const path = require('path');
 
 class NicknameService {
   constructor() {
-    this.dbPath = path.join(__dirname, '../../nickname.db');
+    // Docker 환경에서는 /app/data, 로컬에서는 프로젝트 루트
+    const dataDir = process.env.NODE_ENV === 'production'
+      ? path.join(__dirname, '../../data')
+      : path.join(__dirname, '../..');
+    this.dbPath = path.join(dataDir, 'nickname.db');
     this.db = null;
     this.initialized = false;
     this.saveInterval = null;

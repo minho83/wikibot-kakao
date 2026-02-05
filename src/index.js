@@ -1,7 +1,18 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
+
+// 데이터 디렉토리 생성 (Docker 볼륨 마운트 대상)
+const dataDir = process.env.NODE_ENV === 'production'
+  ? path.join(__dirname, '../data')
+  : path.join(__dirname, '..');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+  console.log(`Data directory created: ${dataDir}`);
+}
 
 const webhookController = require('./controllers/webhookController');
 const { router: nicknameController, setNicknameService } = require('./controllers/nicknameController');
