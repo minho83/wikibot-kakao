@@ -97,7 +97,7 @@ docker run -d \
 # iris-bot 코드 동기화 + pycache 삭제 + 재시작
 IRIS_DIR="$HOME/iris-kakao-bot"
 if [ -d "$IRIS_DIR" ]; then
-    cp "$REPO_DIR/iris-kakao-bot/app.py" "$IRIS_DIR/app.py" 2>/dev/null
+    cp "$REPO_DIR/iris-kakao-bot/app.py" "$IRIS_DIR/bot-server/app.py" 2>/dev/null
     docker exec iris-bot-server rm -rf /app/__pycache__ 2>/dev/null
     docker restart iris-bot-server >> "$LOG_FILE" 2>&1
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] iris-bot 동기화 완료" >> "$LOG_FILE"
