@@ -34,7 +34,10 @@
       "Bash(del \"D:\\\\AutoTool\\\\wikibot-kakao\\\\inspect_notice.js\" \"D:\\\\AutoTool\\\\wikibot-kakao\\\\inspect_update.js\")",
       "Bash(git pull:*)",
       "Bash(git submodule add:*)",
-      "Bash(git submodule update:*)"
+      "Bash(git submodule update:*)",
+      "Bash(git status:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)"
     ],
     "deny": []
   }
