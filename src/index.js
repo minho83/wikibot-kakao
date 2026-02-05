@@ -775,12 +775,12 @@ app.get('/api/db/stats', async (req, res) => {
     // 레코드 수 추가
     try {
       const tradeStats = tradeService.getStats();
-      stats['trade.db'].records = tradeStats.totalTrades || 0;
+      stats['trade.db'].records = tradeStats.trades || 0;
     } catch (e) { stats['trade.db'].records = 0; }
 
     try {
       const partyStats = partyService.getStats();
-      stats['party.db'].records = partyStats.totalParties || 0;
+      stats['party.db'].records = partyStats.total_parties || 0;
     } catch (e) { stats['party.db'].records = 0; }
 
     // 닉네임 DB 레코드 수
