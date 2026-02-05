@@ -210,4 +210,20 @@ router.post('/admin/register', (req, res) => {
   }
 });
 
+// GET /api/nickname/admins - 관리자 목록 및 관리자 방 목록 (서버 시작 알림용)
+router.get('/admins', (req, res) => {
+  try {
+    const info = nicknameService.getAdminsInfo();
+
+    res.json({
+      success: true,
+      admins: info.admins,
+      admin_rooms: info.admin_rooms
+    });
+  } catch (error) {
+    console.error('Get admins error:', error);
+    res.status(500).json({ success: false, message: '관리자 정보 조회 중 오류가 발생했습니다.' });
+  }
+});
+
 module.exports = { router, setNicknameService };

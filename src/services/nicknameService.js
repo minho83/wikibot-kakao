@@ -332,6 +332,34 @@ class NicknameService {
   }
 
   /**
+   * 관리자 목록 및 관리자 방 목록 조회 (시작 알림용)
+   */
+  getAdminsInfo() {
+    if (!this.initialized) return { admins: [], admin_rooms: [] };
+
+    try {
+      // 관리자 목록
+      const adminResult = this.db.exec(`SELECT admin_id FROM admin_config`);
+      const admins = adminResult.length > 0
+        ? adminResult[0].values.map(row => row[0])
+        : [];
+
+      // 활성화된 감시 방 목록 (관리자 방으로 간주)
+      const roomResult = this.db.exec(
+        `SELECT room_id FROM nickname_config WHERE enabled = 1`
+      );
+      const adminRooms = roomResult.length > 0
+        ? roomResult[0].values.map(row => row[0])
+        : [];
+
+      return { admins, admin_rooms: adminRooms };
+    } catch (error) {
+      console.error('Failed to get admins info:', error);
+      return { admins: [], admin_rooms: [] };
+    }
+  }
+
+  /**
    * DB 파일에 저장
    */
   saveDb() {
