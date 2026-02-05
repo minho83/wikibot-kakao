@@ -368,20 +368,16 @@ class PartyService {
 
       // 장소 파싱 (#나겔탑상층, #탑층, 겜블 등)
       if (!location) {
-        if (/#나겔탑/.test(line) || /나겔탑/.test(line)) {
-          if (/상층|4층|고층/.test(line)) {
-            location = '나겔탑상층';
-          } else if (/3층/.test(line)) {
-            location = '나겔탑3층';
-          } else {
-            location = '나겔탑';
-          }
+        if (/나겔.*상층|나겔탑.*[상고]층|나겔탑.*4층|#탑층/.test(line)) {
+          location = '나겔탑상층';
+        } else if (/나겔탑.*3층/.test(line)) {
+          location = '나겔탑3층';
+        } else if (/나겔/.test(line)) {
+          location = '나겔탑';
         } else if (/겜블/.test(line)) {
           location = '겜블';
         } else if (/필드/.test(line)) {
           location = '필드';
-        } else if (/#탑층/.test(line)) {
-          location = '나겔탑상층';
         }
       }
 
