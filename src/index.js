@@ -840,8 +840,8 @@ async function runCheck(type, webhookUrl) {
   }
 }
 
-// 거래 데이터 자동 정리 스케줄러 (매일 새벽 4시)
-function startTradeCleanupScheduler() {
+// DB 자동 정리 스케줄러 (매일 새벽 4시)
+function startDbCleanupScheduler() {
   const checked = new Set();
 
   setInterval(async () => {
@@ -852,36 +852,54 @@ function startTradeCleanupScheduler() {
 
     if (hour === 4 && minute === 0 && !checked.has(dateKey)) {
       checked.add(dateKey);
+      console.log(`[DbCleanup] 일일 정리 시작 (${now.toLocaleString('ko-KR')})`);
 
-      // 어제 날짜 계산
-      const yesterday = new Date(now);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const sinceDate = yesterday.toISOString().split('T')[0];
-
-      console.log(`[TradeCleanup] 일일 정리 시작 (${sinceDate})`);
+      // 1. 오래된 거래 데이터 삭제 (14일 이전)
       try {
-        const result = tradeService.cleanupTrades(sinceDate);
-        console.log(`[TradeCleanup] 완료: ${result.removed}개 제거, ${result.kept}개 유지`);
-        if (result.examples && result.examples.length > 0) {
-          console.log(`[TradeCleanup] 제거 예시: ${result.examples.slice(0, 5).join(', ')}`);
+        const tradeResult = tradeService.cleanupOldTrades(14);
+        if (tradeResult.success) {
+          console.log(`[DbCleanup] trade.db: ${tradeResult.deleted}개 삭제, ${tradeResult.remaining}개 유지 (기준: ${tradeResult.cutoffDate})`);
         }
       } catch (error) {
-        console.error(`[TradeCleanup] 오류:`, error.message);
+        console.error(`[DbCleanup] trade.db 정리 오류:`, error.message);
       }
+
+      // 2. 오래된 파티 데이터 삭제 (7일 이전)
+      try {
+        const partyResult = partyService.cleanupOldParties(7);
+        if (partyResult.success) {
+          console.log(`[DbCleanup] party.db: ${partyResult.deleted}개 삭제, ${partyResult.remaining}개 유지 (기준: ${partyResult.cutoffDate})`);
+        }
+      } catch (error) {
+        console.error(`[DbCleanup] party.db 정리 오류:`, error.message);
+      }
+
+      // 3. LOD_DB 기반 거래 정리 (어제 날짜 기준)
+      try {
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const sinceDate = yesterday.toISOString().split('T')[0];
+        const result = tradeService.cleanupTrades(sinceDate);
+        console.log(`[DbCleanup] LOD 검증: ${result.removed}개 제거, ${result.kept}개 유지`);
+      } catch (error) {
+        console.error(`[DbCleanup] LOD 검증 오류:`, error.message);
+      }
+
+      console.log(`[DbCleanup] 일일 정리 완료`);
 
       // 오래된 키 정리
       if (checked.size > 60) checked.clear();
     }
   }, 60 * 1000);
 
-  console.log(`[TradeCleanup] 매일 04:00 자동 정리 스케줄 등록`);
+  console.log(`[DbCleanup] 매일 04:00 자동 정리 스케줄 등록 (거래 14일, 파티 7일)`);
 }
 
 app.listen(PORT, () => {
   console.log(`KakaoTalk Bot server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   startNoticeScheduler();
-  startTradeCleanupScheduler();
+  startDbCleanupScheduler();
 });
 
 // 프로세스 종료 시 DB 저장

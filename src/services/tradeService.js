@@ -1776,6 +1776,45 @@ class TradeService {
     };
   }
 
+  /**
+   * 오래된 거래 데이터 삭제
+   * @param {number} daysToKeep - 보관 기간 (기본: 14일)
+   */
+  cleanupOldTrades(daysToKeep = 14) {
+    if (!this.initialized) return { success: false, message: 'not initialized' };
+
+    try {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+      const cutoff = cutoffDate.toISOString().split('T')[0]; // YYYY-MM-DD
+
+      const before = this.db.exec(`SELECT COUNT(*) FROM trades`);
+      const beforeCount = before[0]?.values[0]?.[0] || 0;
+
+      this.db.run(`DELETE FROM trades WHERE trade_date < ?`, [cutoff]);
+
+      const after = this.db.exec(`SELECT COUNT(*) FROM trades`);
+      const afterCount = after[0]?.values[0]?.[0] || 0;
+
+      const deleted = beforeCount - afterCount;
+
+      if (deleted > 0) {
+        this.saveDb();
+        console.log(`[TradeService] Cleaned up ${deleted} old trades (before ${cutoff})`);
+      }
+
+      return {
+        success: true,
+        deleted,
+        remaining: afterCount,
+        cutoffDate: cutoff
+      };
+    } catch (e) {
+      console.error('cleanupOldTrades error:', e);
+      return { success: false, message: e.message };
+    }
+  }
+
   // ── 별칭 관리 ────────────────────────────────────────
 
   addAlias(alias, canonicalName, category) {
