@@ -372,7 +372,7 @@ class PartyService {
 
       // 장소 파싱 (원본 그대로 표시)
       if (!location) {
-        const locMatch = line.match(/[#<>★]*(탑층|상층|고층|설원|겜블|필드|나겔[^\s]*)/);
+        const locMatch = line.match(/[#<>★]*(탑층|상층|고층|설원|필드|나겔[^\s]*)/);
         if (locMatch) {
           location = locMatch[1];
         }
