@@ -10,6 +10,7 @@ const { CommunityService } = require('./services/communityService');
 const { NicknameService } = require('./services/nicknameService');
 const { NoticeService } = require('./services/noticeService');
 const { TradeService } = require('./services/tradeService');
+const { PartyService } = require('./services/partyService');
 const { rateLimiter, errorHandler } = require('./middleware');
 
 const app = express();
@@ -19,6 +20,7 @@ const communityService = new CommunityService();
 const nicknameService = new NicknameService();
 const noticeService = new NoticeService();
 const tradeService = new TradeService();
+const partyService = new PartyService();
 
 // 검색 서비스 초기화
 let initialized = false;
@@ -28,6 +30,7 @@ const initializeService = async () => {
     await nicknameService.initialize();
     await noticeService.initialize();
     await tradeService.initialize();
+    await partyService.initialize();
     setNicknameService(nicknameService);
     initialized = true;
   }
@@ -640,6 +643,108 @@ app.get('/api/trade/rooms', async (req, res) => {
   }
 });
 
+// ── 파티 모집 API ──────────────────────────────────────
+
+// 파티 메시지 수집
+app.post('/api/party/collect', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { message, sender_name, room_id } = req.body;
+    if (!message) return res.status(400).json({ success: false, message: 'message required' });
+
+    const senderInfo = { name: sender_name };
+    const parties = partyService.collectMessage(message, senderInfo, room_id);
+
+    res.json({ success: true, count: parties.length });
+  } catch (error) {
+    console.error('Party collect error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 파티 조회
+app.post('/api/party/query', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { date, job } = req.body;
+
+    const result = partyService.queryParties({ date, job });
+    res.json(result);
+  } catch (error) {
+    console.error('Party query error:', error);
+    res.status(500).json({ answer: '파티 조회 중 오류가 발생했습니다.', parties: [] });
+  }
+});
+
+// 파티방 설정 확인
+app.post('/api/party/room-check', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { room_id } = req.body;
+    const room = partyService.getPartyRoom(room_id);
+    res.json({ success: true, room });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 파티방 추가
+app.post('/api/party/rooms', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { room_id, room_name, collect } = req.body;
+    if (!room_id) return res.status(400).json({ success: false, message: 'room_id required' });
+    const result = partyService.addPartyRoom(room_id, room_name, !!collect);
+    const mode = collect ? '수집+조회' : '조회';
+    res.json({ success: result, message: result ? `파티 ${mode}방이 추가되었습니다.` : '추가 실패' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 파티방 제거
+app.delete('/api/party/rooms/:roomId', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const result = partyService.removePartyRoom(req.params.roomId);
+    res.json({ success: result, message: result ? '파티방이 제거되었습니다.' : '제거 실패' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 파티방 목록
+app.get('/api/party/rooms', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    res.json({ success: true, rooms: partyService.listPartyRooms() });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 파티 통계
+app.get('/api/party/stats', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    res.json(partyService.getStats());
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 오래된 파티 정리
+app.post('/api/party/cleanup', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { days_to_keep } = req.body || {};
+    const result = partyService.cleanupOldParties(days_to_keep || 7);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 app.use('/api/nickname', nicknameController);
 app.use('/webhook', rateLimiter, webhookController);
 
@@ -794,6 +899,10 @@ function gracefulShutdown(signal) {
     tradeService.close();
     console.log(`[${signal}] trade.db saved`);
   } catch (e) { console.error(`[${signal}] trade.db save failed:`, e.message); }
+  try {
+    partyService.close();
+    console.log(`[${signal}] party.db saved`);
+  } catch (e) { console.error(`[${signal}] party.db save failed:`, e.message); }
   console.log(`[${signal}] Shutdown complete`);
   process.exit(0);
 }
