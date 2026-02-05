@@ -5,11 +5,7 @@ const readline = require('readline');
 
 class TradeService {
   constructor() {
-    // Docker 환경에서는 /app/data, 로컬에서는 프로젝트 루트
-    const dataDir = process.env.NODE_ENV === 'production'
-      ? path.join(__dirname, '../../data')
-      : path.join(__dirname, '../..');
-    this.dbPath = path.join(dataDir, 'trade.db');
+    this.dbPath = path.join(__dirname, '../../trade.db');
     this.lodDbPath = path.join(__dirname, '../../LOD_DB/lod.db');
     this.db = null;
     this.initialized = false;
