@@ -10,6 +10,13 @@ class PartyService {
     this.saveInterval = null;
   }
 
+  /**
+   * 한국 시간 기준 현재 날짜/시간 반환
+   */
+  _getKoreanDate() {
+    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+  }
+
   async initialize() {
     if (this.initialized) return;
 
@@ -360,7 +367,7 @@ class PartyService {
 
       // 날짜 파싱
       if (!partyDate) {
-        const parsed = this.parseDate(line);
+        const parsed = this.parseDate(line, this._getKoreanDate());
         if (parsed) {
           partyDate = parsed;
         }
@@ -571,15 +578,16 @@ class PartyService {
 
     // 날짜 파싱
     let targetDate = date;
+    const koreanNow = this._getKoreanDate();
     if (!targetDate || targetDate === '오늘') {
-      targetDate = this._formatDate(new Date());
+      targetDate = this._formatDate(koreanNow);
     } else if (targetDate === '내일') {
-      const tomorrow = new Date();
+      const tomorrow = new Date(koreanNow);
       tomorrow.setDate(tomorrow.getDate() + 1);
       targetDate = this._formatDate(tomorrow);
     } else {
       // "2/6" 같은 형식 파싱
-      const parsed = this.parseDate(targetDate);
+      const parsed = this.parseDate(targetDate, koreanNow);
       if (parsed) {
         targetDate = parsed;
       }
@@ -600,10 +608,9 @@ class PartyService {
     }
 
     // 현재 시간 이후만 (오늘인 경우)
-    const now = new Date();
-    const todayStr = this._formatDate(now);
+    const todayStr = this._formatDate(koreanNow);
     if (targetDate === todayStr) {
-      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const currentTime = `${String(koreanNow.getHours()).padStart(2, '0')}:${String(koreanNow.getMinutes()).padStart(2, '0')}`;
       sql += ` AND substr(time_slot, 1, 5) >= ?`;
       params.push(currentTime);
     }
@@ -774,7 +781,7 @@ class PartyService {
     if (!this.db) return { success: false };
 
     try {
-      const today = this._formatDate(new Date());
+      const today = this._formatDate(this._getKoreanDate());
       const result = {};
 
       // 오늘 파티 수
@@ -807,7 +814,7 @@ class PartyService {
     if (!this.db) return { success: false };
 
     try {
-      const cutoffDate = new Date();
+      const cutoffDate = this._getKoreanDate();
       cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
       const cutoff = this._formatDate(cutoffDate);
 
