@@ -24,7 +24,15 @@
       "Bash(git push:*)",
       "mcp__github__get_file_contents",
       "Bash(ssh user@192.168.0.80 \"docker ps -a | grep iris\")",
-      "Bash(ssh:*)"
+      "Bash(ssh:*)",
+      "Bash(findstr:*)",
+      "Bash(node:*)",
+      "Bash(ls -la \"D:\\\\AutoTool\\\\wikibot-kakao\\\\iris-kakao-bot\"\" 2>/dev/null || echo \"Directory listing failed \")",
+      "WebSearch",
+      "Bash(git rm:*)",
+      "WebFetch(domain:lod.nexon.com)",
+      "Bash(del \"D:\\\\AutoTool\\\\wikibot-kakao\\\\inspect_notice.js\" \"D:\\\\AutoTool\\\\wikibot-kakao\\\\inspect_update.js\")",
+      "Bash(git pull:*)"
     ],
     "deny": []
   }
