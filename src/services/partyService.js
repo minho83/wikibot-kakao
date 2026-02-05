@@ -81,6 +81,7 @@ class PartyService {
 
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_party_date ON party_posts(party_date, time_slot)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_party_room ON party_posts(room_id, party_date)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_party_unique ON party_posts(party_date, time_slot, sender_name, room_id)`);
   }
 
   saveDb() {
@@ -489,12 +490,13 @@ class PartyService {
     for (const party of parties) {
       if (!party.party_date || !party.time_slot) continue;
 
-      // 같은 날짜/시간대/방의 기존 파티가 있으면 업데이트, 없으면 삽입
+      // 같은 날짜/시간대/주최자/방의 기존 파티가 있으면 업데이트, 없으면 삽입
+      // (같은 주최자가 올린 파티만 최신으로 갱신, 다른 주최자 파티는 별도 저장)
       const existing = this.db.exec(
         `SELECT id FROM party_posts
-         WHERE party_date = ? AND time_slot = ? AND room_id = ?
+         WHERE party_date = ? AND time_slot = ? AND sender_name = ? AND room_id = ?
          ORDER BY updated_at DESC LIMIT 1`,
-        [party.party_date, party.time_slot, party.room_id]
+        [party.party_date, party.time_slot, party.sender_name, party.room_id]
       );
 
       if (existing.length > 0 && existing[0].values.length > 0) {
