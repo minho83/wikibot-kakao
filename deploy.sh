@@ -1,6 +1,8 @@
 #!/bin/bash
 # wikibot-kakao 자동 배포 스크립트
-# cron으로 주기적 실행: 변경 있을 때만 빌드/재시작
+# 사용법: ./deploy.sh [--force]
+#   --force: 변경 감지 없이 강제 배포 (GitHub Actions용)
+#   기본: cron으로 주기적 실행, 변경 있을 때만 빌드/재시작
 
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
@@ -10,6 +12,12 @@ CONTAINER_NAME="wikibot-server"
 DATA_DIR="$HOME/wikibot-data"
 ENV_FILE="$DATA_DIR/.env"
 LOG_FILE="$REPO_DIR/deploy.log"
+FORCE_DEPLOY=false
+
+# --force 옵션 체크
+if [ "$1" = "--force" ]; then
+    FORCE_DEPLOY=true
+fi
 
 # DB 파일은 repo 밖 data 디렉토리에 저장 (git 영향 방지)
 DB_DIR="$DATA_DIR"
@@ -19,16 +27,18 @@ cd "$REPO_DIR" || exit 1
 # 최신 변경사항 가져오기
 git fetch origin master 2>/dev/null
 
-# 로컬과 원격 비교
-LOCAL=$(git rev-parse HEAD)
-REMOTE=$(git rev-parse origin/master)
+# 로컬과 원격 비교 (--force가 아닐 때만)
+if [ "$FORCE_DEPLOY" = false ]; then
+    LOCAL=$(git rev-parse HEAD)
+    REMOTE=$(git rev-parse origin/master)
 
-if [ "$LOCAL" = "$REMOTE" ]; then
-    exit 0
+    if [ "$LOCAL" = "$REMOTE" ]; then
+        exit 0
+    fi
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 변경 감지: $LOCAL -> $REMOTE" >> "$LOG_FILE"
+else
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 강제 배포 시작 (--force)" >> "$LOG_FILE"
 fi
-
-# 변경 있으면 배포 시작
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] 변경 감지: $LOCAL -> $REMOTE" >> "$LOG_FILE"
 
 # data 디렉토리 보장
 mkdir -p "$DB_DIR"
@@ -41,8 +51,9 @@ for db in nickname.db notice.db trade.db; do
     fi
 done
 
-# pull
+# pull + submodule update
 git pull origin master >> "$LOG_FILE" 2>&1
+git submodule update --init --recursive >> "$LOG_FILE" 2>&1
 
 # Docker 이미지 빌드
 docker build -t "$IMAGE_NAME" . >> "$LOG_FILE" 2>&1

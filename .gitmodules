@@ -1,0 +1,3 @@
+[submodule "iris-kakao-bot"]
+	path = iris-kakao-bot
+	url = https://github.com/minho83/iris-kakao-bot.git
