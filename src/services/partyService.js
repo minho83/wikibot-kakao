@@ -370,20 +370,11 @@ class PartyService {
         }
       }
 
-      // 장소 파싱 (탑층/상층/고층/설원/겜블 등)
+      // 장소 파싱 (원본 그대로 표시)
       if (!location) {
-        if (/나겔.*[상고]층|[#★]?탑층|[#★]?상층|[#★]?고층|나겔탑.*4층/.test(line)) {
-          location = '나겔탑상층';
-        } else if (/나겔.*3층/.test(line)) {
-          location = '나겔탑3층';
-        } else if (/설원/.test(line)) {
-          location = '설원';
-        } else if (/나겔/.test(line)) {
-          location = '나겔탑';
-        } else if (/겜블/.test(line)) {
-          location = '겜블';
-        } else if (/필드/.test(line)) {
-          location = '필드';
+        const locMatch = line.match(/[#<>★]*(탑층|상층|고층|설원|겜블|필드|나겔[^\s]*)/);
+        if (locMatch) {
+          location = locMatch[1];
         }
       }
 
