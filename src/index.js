@@ -1011,7 +1011,7 @@ function startDbCleanupScheduler() {
 
       // 2. 오래된 파티 데이터 삭제 (7일 이전)
       try {
-        const partyResult = partyService.cleanupOldParties(7);
+        const partyResult = partyService.cleanupOldParties(2);
         if (partyResult.success) {
           console.log(`[DbCleanup] party.db: ${partyResult.deleted}개 삭제, ${partyResult.remaining}개 유지 (기준: ${partyResult.cutoffDate})`);
         }
