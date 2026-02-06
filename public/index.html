@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LOD Party Board</title>
+<title>LOD 파티 빈자리</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -248,7 +248,7 @@
   }
 
   .party-card.complete::after {
-    content: 'FULL';
+    content: '\uC644\uBE44';
     position: absolute;
     top: 12px;
     right: -28px;
@@ -301,8 +301,9 @@
   }
 
   .card-sender {
-    font-size: 12px;
-    color: var(--text-dim);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
   }
 
   .card-updated {
@@ -564,14 +565,14 @@
   <div class="server-status" id="serverStatus"></div>
   <label>Server:</label>
   <input type="text" id="serverUrl" placeholder="http://서버IP:3000" spellcheck="false">
-  <button onclick="connectServer()">Connect</button>
+  <button onclick="connectServer()">연결</button>
 </div>
 
 <div class="header">
   <div class="header-inner">
     <div class="logo">
       <div class="logo-icon">P</div>
-      <h1>Party <span>Board</span></h1>
+      <h1>파티 <span>빈자리</span></h1>
     </div>
     <div class="controls">
       <div class="date-nav">
@@ -581,7 +582,7 @@
       </div>
       <label class="include-complete-wrap">
         <input type="checkbox" id="includeComplete" onchange="loadParties()">
-        <span>Full party</span>
+        <span>완비 포함</span>
       </label>
       <div class="refresh-bar">
         <div class="refresh-dot"></div>
@@ -591,12 +592,12 @@
   </div>
   <div class="header-inner" style="padding-top: 12px;">
     <div class="filter-chips" id="filterChips">
-      <button class="chip active" data-job="" onclick="setFilter(this, '')">All</button>
-      <button class="chip" data-job="warrior" onclick="setFilter(this, 'warrior')">Warrior</button>
-      <button class="chip" data-job="rogue" onclick="setFilter(this, 'rogue')">Rogue</button>
-      <button class="chip" data-job="mage" onclick="setFilter(this, 'mage')">Mage</button>
-      <button class="chip" data-job="cleric" onclick="setFilter(this, 'cleric')">Cleric</button>
-      <button class="chip" data-job="taoist" onclick="setFilter(this, 'taoist')">Taoist</button>
+      <button class="chip active" data-job="" onclick="setFilter(this, '')">전체</button>
+      <button class="chip" data-job="warrior" onclick="setFilter(this, 'warrior')">전사</button>
+      <button class="chip" data-job="rogue" onclick="setFilter(this, 'rogue')">도적</button>
+      <button class="chip" data-job="mage" onclick="setFilter(this, 'mage')">법사</button>
+      <button class="chip" data-job="cleric" onclick="setFilter(this, 'cleric')">직자</button>
+      <button class="chip" data-job="taoist" onclick="setFilter(this, 'taoist')">도가</button>
     </div>
   </div>
 </div>
@@ -606,7 +607,7 @@
   <div id="content">
     <div class="loading">
       <div class="spinner"></div>
-      <div style="color: var(--text-dim);">Loading...</div>
+      <div style="color: var(--text-dim);">불러오는 중...</div>
     </div>
   </div>
 </div>
@@ -703,13 +704,13 @@ function formatDate(d) {
 function formatDisplayDate(d) {
   const month = d.getMonth() + 1;
   const day = d.getDate();
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
   const dName = dayNames[d.getDay()];
   const koStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' });
   const today = new Date(koStr);
   today.setHours(0, 0, 0, 0);
   const isToday = d.getTime() === today.getTime();
-  return `${month}/${day} (${dName})${isToday ? ' TODAY' : ''}`;
+  return `${month}/${day} (${dName})${isToday ? ' 오늘' : ''}`;
 }
 
 function changeDate(delta) {
@@ -766,16 +767,16 @@ async function loadParties(isRetry = false) {
       retryCount++;
       const delay = retryCount * 2000;
       document.getElementById('content').innerHTML =
-        `<div class="empty-state"><div class="empty-state-icon">&#x1F504;</div><h3>Reconnecting... (${retryCount}/${MAX_RETRY})</h3></div>`;
+        `<div class="empty-state"><div class="empty-state-icon">&#x1F504;</div><h3>재연결 중... (${retryCount}/${MAX_RETRY})</h3></div>`;
       setTimeout(() => loadParties(true), delay);
       return;
     }
     const isLocal = !SERVER_URL && location.protocol !== 'file:';
     const msg = isLocal
-      ? 'Server temporarily unavailable. Will retry on next refresh.'
-      : 'Server not responding. Check server URL above.';
+      ? '서버에 일시적으로 연결할 수 없습니다. 자동으로 재시도합니다.'
+      : '서버에 연결할 수 없습니다. 상단에서 서버 URL을 확인해주세요.';
     document.getElementById('content').innerHTML =
-      `<div class="empty-state"><div class="empty-state-icon">&#x26A0;</div><h3>Connection Error</h3><p>${msg}</p></div>`;
+      `<div class="empty-state"><div class="empty-state-icon">&#x26A0;</div><h3>연결 오류</h3><p>${msg}</p></div>`;
     document.getElementById('serverStatus').className = 'server-status err';
     retryCount = 0;
   }
@@ -798,15 +799,15 @@ function renderStats(data) {
   let html = `
     <div class="stat-card">
       <div class="stat-value">${parties.length}</div>
-      <div class="stat-label">Total Parties</div>
+      <div class="stat-label">전체 파티</div>
     </div>
     <div class="stat-card">
       <div class="stat-value">${vacantParties}</div>
-      <div class="stat-label">Parties w/ Spots</div>
+      <div class="stat-label">빈자리 파티</div>
     </div>
     <div class="stat-card">
       <div class="stat-value">${totalVacancies}</div>
-      <div class="stat-label">Open Slots</div>
+      <div class="stat-label">빈자리 수</div>
     </div>
   `;
 
@@ -815,7 +816,7 @@ function renderStats(data) {
       html += `
         <div class="stat-card">
           <div class="stat-value" style="-webkit-text-fill-color: var(--${key}); background: none;">${jobVacancies[key]}</div>
-          <div class="stat-label">${info.kr} Spots</div>
+          <div class="stat-label">${info.kr} 빈자리</div>
         </div>
       `;
     }
@@ -837,8 +838,8 @@ function renderParties() {
     container.innerHTML = `
       <div class="empty-state">
         <div class="empty-state-icon">&#x1F50D;</div>
-        <h3>No Parties Found</h3>
-        <p>${filterName ? filterName + ' spot available party not found.' : 'No party data for this date.'}</p>
+        <h3>파티 없음</h3>
+        <p>${filterName ? filterName + ' 빈자리가 있는 파티가 없습니다.' : '해당 날짜에 파티 데이터가 없습니다.'}</p>
       </div>
     `;
     return;
@@ -847,7 +848,7 @@ function renderParties() {
   // Group by time_slot
   const groups = {};
   filtered.forEach(p => {
-    const ts = p.time_slot || 'Unknown';
+    const ts = p.time_slot || '미정';
     if (!groups[ts]) groups[ts] = [];
     groups[ts].push(p);
   });
@@ -863,7 +864,7 @@ function renderParties() {
       <div class="time-group">
         <div class="time-header">
           <span class="time-badge">${time}</span>
-          <span class="time-count">${parties.length} parties${vacantCount > 0 ? ` &middot; ${vacantCount} spots open` : ''}</span>
+          <span class="time-count">${parties.length}개 파티${vacantCount > 0 ? ` &middot; ${vacantCount}개 빈자리` : ''}</span>
         </div>
         <div class="party-grid">
     `;
@@ -879,7 +880,7 @@ function renderParties() {
 }
 
 function renderPartyCard(party) {
-  const loc = party.location || 'Unknown';
+  const loc = party.location || '미정';
   const locIcon = Object.entries(LOCATION_ICONS).find(([k]) => loc.includes(k));
   const icon = locIcon ? locIcon[1] : '&#x1F4CD;';
   const isComplete = party.is_complete;
@@ -891,7 +892,7 @@ function renderPartyCard(party) {
   Object.entries(JOB_INFO).forEach(([key, info]) => {
     const count = vacancies[key] || 0;
     if (count > 0) {
-      vacancyTags += `<span class="vacancy-tag ${key}">${info.kr} ${count} spot${count > 1 ? 's' : ''}</span>`;
+      vacancyTags += `<span class="vacancy-tag ${key}">${info.kr} ${count}자리</span>`;
     }
   });
 
@@ -906,7 +907,7 @@ function renderPartyCard(party) {
     let slotsHtml = '';
     slots.forEach(s => {
       if (s === '') {
-        slotsHtml += `<span class="slot empty ${job}">OPEN</span>`;
+        slotsHtml += `<span class="slot empty ${job}">모집중</span>`;
       } else {
         slotsHtml += `<span class="slot filled">${s}</span>`;
       }
@@ -958,10 +959,10 @@ function formatTimeAgo(dateStr) {
   const d = new Date(dateStr);
   const now = new Date();
   const diff = Math.floor((now - d) / 1000);
-  if (diff < 60) return 'just now';
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+  if (diff < 60) return '방금';
+  if (diff < 3600) return `${Math.floor(diff / 60)}분 전`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}시간 전`;
+  return `${Math.floor(diff / 86400)}일 전`;
 }
 
 // Auto refresh
