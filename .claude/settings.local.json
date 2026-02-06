@@ -44,7 +44,10 @@
       "Bash(cloudflared --version:*)",
       "Bash(netstat:*)",
       "Bash(del \"D:\\\\AutoTool\\\\wikibot-kakao\\\\.env\")",
-      "Bash(git -C \"D:/AutoTool/wikibot-kakao\" diff src/services/partyService.js)"
+      "Bash(git -C \"D:/AutoTool/wikibot-kakao\" diff src/services/partyService.js)",
+      "Bash(docker ps:*)",
+      "Bash(npx jest:*)",
+      "Bash(curl:*)"
     ],
     "deny": []
   }
