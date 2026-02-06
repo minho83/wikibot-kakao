@@ -613,6 +613,9 @@
       <button class="chip" data-job="cleric" onclick="setFilter(this, 'cleric')">직자</button>
       <button class="chip" data-job="taoist" onclick="setFilter(this, 'taoist')">도가</button>
     </div>
+    <div class="filter-chips" id="timeChips" style="margin-top: 8px;">
+      <button class="chip active" onclick="setTimeFilter(this, '')">전체 시간</button>
+    </div>
   </div>
 </div>
 
@@ -697,6 +700,7 @@ const LOCATION_ICONS = {
 
 let currentDate = new Date();
 let currentFilter = '';
+let currentTimeFilter = '';
 let refreshInterval = null;
 let refreshCountdown = 30;
 let allParties = [];
@@ -739,7 +743,7 @@ function updateDateDisplay() {
 
 function setFilter(el, job) {
   currentFilter = job;
-  document.querySelectorAll('.chip').forEach(c => {
+  document.querySelectorAll('#filterChips .chip').forEach(c => {
     c.className = 'chip';
   });
   if (job) {
@@ -748,6 +752,28 @@ function setFilter(el, job) {
     el.className = 'chip active';
   }
   renderParties();
+}
+
+function setTimeFilter(el, time) {
+  currentTimeFilter = time;
+  document.querySelectorAll('#timeChips .chip').forEach(c => {
+    c.className = 'chip';
+  });
+  el.className = 'chip active';
+  renderParties();
+}
+
+function buildTimeChips() {
+  const times = [...new Set(allParties.map(p => p.time_slot))].sort();
+  const container = document.getElementById('timeChips');
+  const isAllActive = !currentTimeFilter;
+  let html = `<button class="chip${isAllActive ? ' active' : ''}" onclick="setTimeFilter(this, '')">전체 시간</button>`;
+  times.forEach(t => {
+    const count = allParties.filter(p => p.time_slot === t).length;
+    const isActive = currentTimeFilter === t;
+    html += `<button class="chip${isActive ? ' active' : ''}" onclick="setTimeFilter(this, '${t}')">${t} (${count})</button>`;
+  });
+  container.innerHTML = html;
 }
 
 let retryCount = 0;
@@ -767,10 +793,12 @@ async function loadParties(isRetry = false) {
     retryCount = 0;
     if (data.success) {
       allParties = data.parties || [];
+      buildTimeChips();
       renderStats(data);
       renderParties();
     } else {
       allParties = [];
+      buildTimeChips();
       renderStats({ stats: {} });
       renderParties();
     }
@@ -844,7 +872,10 @@ function renderParties() {
   let filtered = allParties;
 
   if (currentFilter) {
-    filtered = allParties.filter(p => (p.vacancies?.[currentFilter] || 0) > 0);
+    filtered = filtered.filter(p => (p.vacancies?.[currentFilter] || 0) > 0);
+  }
+  if (currentTimeFilter) {
+    filtered = filtered.filter(p => p.time_slot === currentTimeFilter);
   }
 
   if (filtered.length === 0) {
