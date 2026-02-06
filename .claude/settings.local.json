@@ -39,7 +39,12 @@
       "Bash(git checkout:*)",
       "Bash(git merge:*)",
       "Bash(git submodule:*)",
-      "Bash(python3 -m json.tool:*)"
+      "Bash(python3 -m json.tool:*)",
+      "Bash(where:*)",
+      "Bash(cloudflared --version:*)",
+      "Bash(netstat:*)",
+      "Bash(del \"D:\\\\AutoTool\\\\wikibot-kakao\\\\.env\")",
+      "Bash(git -C \"D:/AutoTool/wikibot-kakao\" diff src/services/partyService.js)"
     ],
     "deny": []
   }
