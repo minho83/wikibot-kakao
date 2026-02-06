@@ -332,7 +332,7 @@ app.post('/ask/community', async (req, res) => {
   try {
     const { query } = req.body;
     if (!query) {
-      return res.status(400).json({ answer: '검색어를 입력해주세요.', sources: [] });
+      return res.status(400).json({ success: false, answer: '검색어를 입력해주세요.', sources: [] });
     }
 
     // Rate limiting 체크
@@ -340,6 +340,8 @@ app.post('/ask/community', async (req, res) => {
     if (!rateCheck.allowed) {
       const waitSec = Math.ceil(rateCheck.waitTime / 1000);
       return res.json({
+        success: false,
+        message: `서버 보호를 위해 ${waitSec}초 후에 다시 시도해주세요.`,
         answer: `서버 보호를 위해 ${waitSec}초 후에 다시 시도해주세요.`,
         sources: []
       });
@@ -369,13 +371,13 @@ app.post('/ask/community', async (req, res) => {
         });
       }
 
-      res.json({ answer, sources });
+      res.json({ success: true, data: result.data, answer, sources });
     } else {
-      res.json({ answer: result.message, sources: [] });
+      res.json({ success: false, message: result.message, answer: result.message, sources: [] });
     }
   } catch (error) {
     console.error('Community search error:', error);
-    res.status(500).json({ answer: '게시판 검색 중 오류가 발생했습니다.', sources: [] });
+    res.status(500).json({ success: false, answer: '게시판 검색 중 오류가 발생했습니다.', sources: [] });
   }
 });
 
@@ -386,6 +388,8 @@ app.post('/ask/notice', async (req, res) => {
     if (!rateCheck.allowed) {
       const waitSec = Math.ceil(rateCheck.waitTime / 1000);
       return res.json({
+        success: false,
+        message: `서버 보호를 위해 ${waitSec}초 후에 다시 시도해주세요.`,
         answer: `서버 보호를 위해 ${waitSec}초 후에 다시 시도해주세요.`,
         sources: []
       });
@@ -409,13 +413,13 @@ app.post('/ask/notice', async (req, res) => {
         });
       }
 
-      res.json({ answer, sources: [{ title: data.title, url: data.link, score: 1 }] });
+      res.json({ success: true, data: result.data, answer, sources: [{ title: data.title, url: data.link, score: 1 }] });
     } else {
-      res.json({ answer: result.message, sources: [] });
+      res.json({ success: false, message: result.message, answer: result.message, sources: [] });
     }
   } catch (error) {
     console.error('Notice error:', error);
-    res.status(500).json({ answer: '공지사항 조회 중 오류가 발생했습니다.', sources: [] });
+    res.status(500).json({ success: false, answer: '공지사항 조회 중 오류가 발생했습니다.', sources: [] });
   }
 });
 
@@ -426,6 +430,8 @@ app.post('/ask/update', async (req, res) => {
     if (!rateCheck.allowed) {
       const waitSec = Math.ceil(rateCheck.waitTime / 1000);
       return res.json({
+        success: false,
+        message: `서버 보호를 위해 ${waitSec}초 후에 다시 시도해주세요.`,
         answer: `서버 보호를 위해 ${waitSec}초 후에 다시 시도해주세요.`,
         sources: []
       });
@@ -449,13 +455,13 @@ app.post('/ask/update', async (req, res) => {
         });
       }
 
-      res.json({ answer, sources: [{ title: data.title, url: data.link, score: 1 }] });
+      res.json({ success: true, data: result.data, answer, sources: [{ title: data.title, url: data.link, score: 1 }] });
     } else {
-      res.json({ answer: result.message, sources: [] });
+      res.json({ success: false, message: result.message, answer: result.message, sources: [] });
     }
   } catch (error) {
     console.error('Update error:', error);
-    res.status(500).json({ answer: '업데이트 조회 중 오류가 발생했습니다.', sources: [] });
+    res.status(500).json({ success: false, answer: '업데이트 조회 중 오류가 발생했습니다.', sources: [] });
   }
 });
 
@@ -488,6 +494,39 @@ app.get('/ask/check-new', async (req, res) => {
   } catch (error) {
     console.error('Check new error:', error);
     res.status(500).json({ hasNew: false, message: '확인 중 오류가 발생했습니다.' });
+  }
+});
+
+// ── DB 검색 API (웹 UI용) ──────────────────────────────
+app.get('/api/search', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+
+    const { q, category, limit } = req.query;
+    if (!q || !q.trim()) {
+      return res.json({ success: false, message: '검색어를 입력해주세요.', results: [] });
+    }
+
+    const maxLimit = Math.min(parseInt(limit) || 20, 50);
+    const result = searchService.search(q.trim(), maxLimit);
+
+    if (result.success && result.results) {
+      let filtered = result.results;
+      if (category && category !== 'all') {
+        filtered = filtered.filter(item => item.category === category);
+      }
+      res.json({
+        success: true,
+        query: result.query,
+        count: filtered.length,
+        results: filtered
+      });
+    } else {
+      res.json({ success: true, query: q.trim(), count: 0, results: [], message: result.message });
+    }
+  } catch (error) {
+    console.error('Search API error:', error);
+    res.status(500).json({ success: false, message: '검색 중 오류가 발생했습니다.', results: [] });
   }
 });
 
@@ -942,6 +981,126 @@ app.get('/api/db/history', (req, res) => {
   });
 });
 
+// ── Notion 위키 API ──────────────────────────────────────
+const NOTION_TOKEN = process.env.NOTION_TOKEN;
+const NOTION_PAGE_ID = process.env.NOTION_PAGE_ID;
+const wikiCache = { data: null, expires: 0, children: {} };
+const WIKI_CACHE_TTL = 30 * 60 * 1000; // 30분
+
+async function notionApi(endpoint) {
+  const https = require('https');
+  return new Promise((resolve, reject) => {
+    const opts = {
+      hostname: 'api.notion.com',
+      path: endpoint,
+      headers: {
+        'Authorization': 'Bearer ' + NOTION_TOKEN,
+        'Notion-Version': '2022-06-28'
+      }
+    };
+    https.get(opts, res => {
+      let d = '';
+      res.on('data', c => d += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(d)); }
+        catch { reject(new Error('Invalid JSON')); }
+      });
+    }).on('error', reject);
+  });
+}
+
+async function fetchAllChildren(blockId) {
+  let all = [];
+  let cursor = undefined;
+  do {
+    const qs = cursor ? `?start_cursor=${cursor}&page_size=100` : '?page_size=100';
+    const data = await notionApi(`/v1/blocks/${blockId}/children${qs}`);
+    if (data.results) all = all.concat(data.results);
+    cursor = data.has_more ? data.next_cursor : undefined;
+  } while (cursor);
+  return all;
+}
+
+// 위키 캐시 프리로드 (서버 시작 시 + stale-while-revalidate)
+async function preloadWikiCache() {
+  if (!NOTION_TOKEN || !NOTION_PAGE_ID) return;
+  const topBlocks = await fetchAllChildren(NOTION_PAGE_ID);
+  const colLists = topBlocks.filter(b => b.type === 'column_list' && b.has_children);
+  await Promise.all(colLists.map(async block => {
+    block._columns = await fetchAllChildren(block.id);
+    await Promise.all(block._columns.filter(c => c.has_children).map(async col => {
+      col._children = await fetchAllChildren(col.id);
+    }));
+  }));
+  wikiCache.data = topBlocks;
+  wikiCache.expires = Date.now() + WIKI_CACHE_TTL;
+  console.log('Wiki cache preloaded');
+}
+
+// 위키 최상위 블록 (캐싱)
+app.get('/api/wiki', async (req, res) => {
+  try {
+    if (!NOTION_TOKEN || !NOTION_PAGE_ID) {
+      return res.json({ success: false, message: 'Notion 설정이 없습니다.' });
+    }
+    if (wikiCache.data) {
+      const isExpired = Date.now() >= wikiCache.expires;
+      if (isExpired) {
+        // stale-while-revalidate: 즉시 응답 후 백그라운드 갱신
+        res.json({ success: true, blocks: wikiCache.data, cached: true });
+        preloadWikiCache().catch(e => console.error('Wiki background refresh error:', e));
+        return;
+      }
+      return res.json({ success: true, blocks: wikiCache.data, cached: true });
+    }
+
+    // 첫 요청 시 로드
+    await preloadWikiCache();
+    res.json({ success: true, blocks: wikiCache.data, cached: false });
+  } catch (error) {
+    console.error('Wiki API error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 특정 블록의 자식 (토글 펼치기용)
+app.get('/api/wiki/blocks/:blockId', async (req, res) => {
+  try {
+    if (!NOTION_TOKEN) {
+      return res.json({ success: false, message: 'Notion 설정이 없습니다.' });
+    }
+    const { blockId } = req.params;
+    const now = Date.now();
+    const cached = wikiCache.children[blockId];
+    if (cached && now < cached.expires) {
+      return res.json({ success: true, blocks: cached.data, cached: true });
+    }
+
+    const children = await fetchAllChildren(blockId);
+
+    // 자식 중 has_children인 블록도 1단계 더 가져옴
+    for (const child of children) {
+      if (child.has_children && ['toggle', 'bulleted_list_item', 'numbered_list_item', 'column_list', 'quote', 'callout'].includes(child.type)) {
+        child._children = await fetchAllChildren(child.id);
+      }
+    }
+
+    wikiCache.children[blockId] = { data: children, expires: now + WIKI_CACHE_TTL };
+    res.json({ success: true, blocks: children, cached: false });
+  } catch (error) {
+    console.error('Wiki block error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 위키 캐시 초기화
+app.post('/api/wiki/refresh', (req, res) => {
+  wikiCache.data = null;
+  wikiCache.expires = 0;
+  wikiCache.children = {};
+  res.json({ success: true, message: '위키 캐시가 초기화되었습니다.' });
+});
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -1094,6 +1253,8 @@ app.listen(PORT, () => {
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   startNoticeScheduler();
   startDbCleanupScheduler();
+  // 위키 캐시 프리로드 (서버 시작 시 미리 로드)
+  preloadWikiCache().catch(e => console.error('Wiki preload error:', e));
 });
 
 // 프로세스 종료 시 DB 저장
