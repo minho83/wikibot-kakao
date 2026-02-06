@@ -781,8 +781,8 @@ app.get('/api/party/stats', async (req, res) => {
 app.post('/api/party/cleanup', async (req, res) => {
   try {
     if (!initialized) await initializeService();
-    const { days_to_keep } = req.body || {};
-    const result = partyService.cleanupOldParties(days_to_keep || 7);
+    const { days_to_keep, delete_all } = req.body || {};
+    const result = partyService.cleanupOldParties(days_to_keep || 7, !!delete_all);
     res.json(result);
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

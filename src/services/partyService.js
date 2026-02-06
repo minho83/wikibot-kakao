@@ -850,18 +850,21 @@ class PartyService {
 
   // ── 오래된 데이터 정리 ──────────────────────────────────────
 
-  cleanupOldParties(daysToKeep = 7) {
+  cleanupOldParties(daysToKeep = 7, deleteAll = false) {
     if (!this.db) return { success: false };
 
     try {
-      const cutoffDate = this._getKoreanDate();
-      cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
-      const cutoff = this._formatDate(cutoffDate);
-
       const before = this.db.exec(`SELECT COUNT(*) FROM party_posts`);
       const beforeCount = before[0]?.values[0]?.[0] || 0;
 
-      this.db.run(`DELETE FROM party_posts WHERE party_date < ?`, [cutoff]);
+      if (deleteAll) {
+        this.db.run(`DELETE FROM party_posts`);
+      } else {
+        const cutoffDate = this._getKoreanDate();
+        cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+        const cutoff = this._formatDate(cutoffDate);
+        this.db.run(`DELETE FROM party_posts WHERE party_date < ?`, [cutoff]);
+      }
 
       const after = this.db.exec(`SELECT COUNT(*) FROM party_posts`);
       const afterCount = after[0]?.values[0]?.[0] || 0;
