@@ -789,6 +789,55 @@ app.post('/api/party/cleanup', async (req, res) => {
   }
 });
 
+// ── 파티 관리 API (admin) ──────────────────────────────
+
+// 관리자용 파티 목록 (시간 필터 없이 전체)
+app.get('/api/party/admin/list', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { date } = req.query;
+    const parties = partyService.getAllPartiesAdmin(date || null);
+    res.json({ success: true, parties });
+  } catch (error) {
+    console.error('Party admin list error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 단일 파티 조회
+app.get('/api/party/admin/:id', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const party = partyService.getPartyById(parseInt(req.params.id));
+    if (!party) return res.status(404).json({ success: false, message: 'Not found' });
+    res.json({ success: true, party });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 파티 수정
+app.put('/api/party/admin/:id', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const result = partyService.updateParty(parseInt(req.params.id), req.body);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 파티 삭제
+app.delete('/api/party/admin/:id', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const result = partyService.deleteParty(parseInt(req.params.id));
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 app.use('/api/nickname', nicknameController);
 app.use('/webhook', rateLimiter, webhookController);
 

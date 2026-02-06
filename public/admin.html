@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LOD 파티 DB 관리</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --card-hover: #222633;
+    --border: #2a2e3d;
+    --text: #e1e4ed;
+    --text-dim: #8b90a0;
+    --accent: #6c72cb;
+    --warrior: #e74c3c;
+    --rogue: #9b59b6;
+    --mage: #3498db;
+    --cleric: #f1c40f;
+    --taoist: #1abc9c;
+    --empty: #e67e22;
+    --danger: #e74c3c;
+    --success: #27ae60;
+  }
+
+  body {
+    font-family: 'Segoe UI', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #1a1d27 0%, #252a3a 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-icon {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, var(--accent), #cb69c1);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+
+  .logo h1 {
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .back-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 13px;
+  }
+
+  .back-link:hover { text-decoration: underline; }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .date-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .date-nav button {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+
+  .date-nav button:hover { background: var(--card-hover); }
+
+  .date-display {
+    font-weight: 600;
+    min-width: 120px;
+    text-align: center;
+  }
+
+  .btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.15s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  .btn-primary:hover { opacity: 0.85; }
+
+  .btn-danger {
+    background: transparent;
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+
+  .btn-danger:hover { background: rgba(231,76,60,0.15); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text);
+  }
+
+  .btn-ghost:hover { background: var(--card-hover); }
+
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+  .main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px 24px;
+  }
+
+  .stats-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .stat-chip {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+
+  .stat-chip strong {
+    color: var(--accent);
+    font-size: 16px;
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .toolbar select, .toolbar input {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+
+  .toolbar label {
+    font-size: 13px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  thead th {
+    background: var(--card);
+    padding: 10px 8px;
+    text-align: left;
+    font-weight: 600;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+
+  tbody tr:hover { background: var(--card-hover); }
+
+  td {
+    padding: 8px;
+    vertical-align: top;
+  }
+
+  .id-col { color: var(--text-dim); font-size: 12px; width: 40px; }
+
+  .slot-cell {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+
+  .slot-tag {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .slot-tag.filled { background: rgba(108,114,203,0.2); color: var(--text); }
+  .slot-tag.empty { background: rgba(230,126,34,0.2); color: var(--empty); font-style: italic; }
+
+  .slot-tag.warrior { border-left: 2px solid var(--warrior); }
+  .slot-tag.rogue { border-left: 2px solid var(--rogue); }
+  .slot-tag.mage { border-left: 2px solid var(--mage); }
+  .slot-tag.cleric { border-left: 2px solid var(--cleric); }
+  .slot-tag.taoist { border-left: 2px solid var(--taoist); }
+
+  .complete-badge {
+    background: rgba(39,174,96,0.2);
+    color: var(--success);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+  }
+
+  .recruiting-badge {
+    background: rgba(230,126,34,0.2);
+    color: var(--empty);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+  }
+
+  .actions {
+    display: flex;
+    gap: 4px;
+  }
+
+  .meta-text {
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+
+  /* Modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 200;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 60px;
+    overflow-y: auto;
+  }
+
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 700px;
+    max-width: 95vw;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 24px;
+  }
+
+  .modal h2 {
+    font-size: 16px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .form-group.full { grid-column: 1 / -1; }
+
+  .form-group label {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+
+  .form-group input:focus,
+  .form-group textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .form-group textarea {
+    resize: vertical;
+    min-height: 60px;
+  }
+
+  .slot-editor {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+  }
+
+  .slot-editor input {
+    width: 80px;
+    padding: 4px 6px;
+    font-size: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 4px;
+  }
+
+  .slot-editor .add-slot {
+    width: 24px;
+    height: 24px;
+    background: var(--card-hover);
+    border: 1px dashed var(--border);
+    color: var(--text-dim);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .slot-editor .add-slot:hover { border-color: var(--accent); color: var(--accent); }
+
+  .slot-editor .remove-slot {
+    width: 18px;
+    height: 18px;
+    background: none;
+    border: none;
+    color: var(--danger);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
+    opacity: 0.6;
+  }
+
+  .slot-editor .remove-slot:hover { opacity: 1; }
+
+  .modal-actions {
+    margin-top: 20px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--success);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    z-index: 300;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.2s;
+  }
+
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.error { background: var(--danger); }
+
+  .raw-msg {
+    max-height: 100px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-size: 11px;
+    color: var(--text-dim);
+    background: var(--bg);
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .raw-msg.expanded { max-height: none; }
+
+  @media (max-width: 768px) {
+    .header { padding: 12px 16px; }
+    .main { padding: 12px 16px; }
+    .form-grid { grid-template-columns: 1fr; }
+    .modal { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo">
+      <div class="logo-icon">&#x2699;</div>
+      <h1>파티 DB 관리</h1>
+    </div>
+    <a href="/" class="back-link">&#x2190; 빈자리 뷰어</a>
+  </div>
+  <div class="header-right">
+    <div class="date-nav">
+      <button onclick="changeDate(-1)">&#x25C0;</button>
+      <span class="date-display" id="dateDisplay"></span>
+      <button onclick="changeDate(1)">&#x25B6;</button>
+    </div>
+    <button class="btn btn-ghost" onclick="loadAll()">전체 보기</button>
+    <button class="btn btn-primary" onclick="loadParties()">&#x21BB; 새로고침</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="stats-row" id="statsRow"></div>
+
+  <div class="toolbar">
+    <label>정렬:
+      <select id="sortBy" onchange="renderTable()">
+        <option value="id">ID</option>
+        <option value="time">시간대</option>
+        <option value="date">날짜</option>
+        <option value="updated">최근 수정</option>
+      </select>
+    </label>
+    <label>
+      <input type="checkbox" id="showComplete" checked onchange="renderTable()"> 완비 포함
+    </label>
+    <label>
+      <input type="checkbox" id="showRaw" onchange="renderTable()"> 원문 표시
+    </label>
+    <div style="flex: 1;"></div>
+    <span id="countLabel" style="color: var(--text-dim); font-size: 13px;"></span>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>날짜</th>
+          <th>시간</th>
+          <th>장소</th>
+          <th>전사</th>
+          <th>도적</th>
+          <th>법사</th>
+          <th>직자</th>
+          <th>도가</th>
+          <th>상태</th>
+          <th>주최</th>
+          <th>수정시각</th>
+          <th>작업</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr><td colspan="13" style="text-align:center; padding:40px; color:var(--text-dim);">불러오는 중...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <h2>
+      <span id="modalTitle">파티 수정</span>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">&#x2715;</button>
+    </h2>
+    <div class="form-grid" id="editForm">
+      <div class="form-group">
+        <label>날짜 (YYYY-MM-DD)</label>
+        <input type="text" id="f_party_date" placeholder="2026-02-08">
+      </div>
+      <div class="form-group">
+        <label>시간대 (HH:MM~HH:MM)</label>
+        <input type="text" id="f_time_slot" placeholder="09:00~11:00">
+      </div>
+      <div class="form-group">
+        <label>장소</label>
+        <input type="text" id="f_location" placeholder="낡1, 나겔탑, 탑층...">
+      </div>
+      <div class="form-group">
+        <label>팟이름</label>
+        <input type="text" id="f_party_name" placeholder="길드팟">
+      </div>
+      <div class="form-group">
+        <label>주최자</label>
+        <input type="text" id="f_organizer">
+      </div>
+      <div class="form-group">
+        <label>상태</label>
+        <select id="f_is_complete">
+          <option value="0">모집중</option>
+          <option value="1">완비</option>
+        </select>
+      </div>
+
+      <div class="form-group full">
+        <label>전사 슬롯</label>
+        <div class="slot-editor" id="se_warrior"></div>
+      </div>
+      <div class="form-group full">
+        <label>도적 슬롯</label>
+        <div class="slot-editor" id="se_rogue"></div>
+      </div>
+      <div class="form-group full">
+        <label>법사 (딜법) 슬롯</label>
+        <div class="slot-editor" id="se_mage"></div>
+      </div>
+      <div class="form-group full">
+        <label>직자 슬롯</label>
+        <div class="slot-editor" id="se_cleric"></div>
+      </div>
+      <div class="form-group full">
+        <label>도가 슬롯</label>
+        <div class="slot-editor" id="se_taoist"></div>
+      </div>
+
+      <div class="form-group full">
+        <label>요구사항 (JSON)</label>
+        <textarea id="f_requirements" rows="2" placeholder='{"데빌": "체580↑8강↑"}'></textarea>
+      </div>
+      <div class="form-group full">
+        <label>원문 메시지</label>
+        <textarea id="f_raw_message" rows="4" readonly style="color: var(--text-dim);"></textarea>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">취소</button>
+      <button class="btn btn-primary" id="saveBtn" onclick="saveParty()">저장</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const JOB_KEYS = ['warrior', 'rogue', 'mage', 'cleric', 'taoist'];
+const JOB_NAMES = { warrior: '전사', rogue: '도적', mage: '법사', cleric: '직자', taoist: '도가' };
+
+let allParties = [];
+let currentDate = null; // null = show all
+let editingId = null;
+
+// Init Korean date
+(function() {
+  const koStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' });
+  currentDate = new Date(koStr);
+  currentDate.setHours(0, 0, 0, 0);
+})();
+
+function formatDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function formatDisplayDate(d) {
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  const names = ['일','월','화','수','목','금','토'];
+  return `${m}/${day} (${names[d.getDay()]})`;
+}
+
+function changeDate(delta) {
+  if (!currentDate) {
+    const koStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' });
+    currentDate = new Date(koStr);
+    currentDate.setHours(0, 0, 0, 0);
+  }
+  currentDate.setDate(currentDate.getDate() + delta);
+  updateDateDisplay();
+  loadParties();
+}
+
+function loadAll() {
+  currentDate = null;
+  document.getElementById('dateDisplay').textContent = '전체';
+  loadParties();
+}
+
+function updateDateDisplay() {
+  document.getElementById('dateDisplay').textContent = currentDate ? formatDisplayDate(currentDate) : '전체';
+}
+
+async function loadParties() {
+  try {
+    const params = new URLSearchParams();
+    if (currentDate) params.set('date', formatDate(currentDate));
+
+    const resp = await fetch('/api/party/admin/list?' + params);
+    const data = await resp.json();
+
+    if (data.success) {
+      allParties = data.parties || [];
+      renderStats();
+      renderTable();
+    } else {
+      showToast('로드 실패: ' + (data.message || ''), true);
+    }
+  } catch (err) {
+    showToast('서버 연결 실패', true);
+    console.error(err);
+  }
+}
+
+function renderStats() {
+  const total = allParties.length;
+  const complete = allParties.filter(p => p.is_complete).length;
+  const recruiting = total - complete;
+
+  let totalEmpty = 0;
+  const jobEmpty = {};
+  JOB_KEYS.forEach(j => jobEmpty[j] = 0);
+
+  allParties.forEach(p => {
+    JOB_KEYS.forEach(j => {
+      const slots = p[j + '_slots'] || [];
+      const empty = slots.filter(s => s === '').length;
+      jobEmpty[j] += empty;
+      totalEmpty += empty;
+    });
+  });
+
+  let html = `
+    <div class="stat-chip">전체 <strong>${total}</strong></div>
+    <div class="stat-chip">모집중 <strong>${recruiting}</strong></div>
+    <div class="stat-chip">완비 <strong>${complete}</strong></div>
+    <div class="stat-chip">빈자리 <strong>${totalEmpty}</strong></div>
+  `;
+
+  JOB_KEYS.forEach(j => {
+    if (jobEmpty[j] > 0) {
+      html += `<div class="stat-chip">${JOB_NAMES[j]} <strong style="color:var(--${j})">${jobEmpty[j]}</strong></div>`;
+    }
+  });
+
+  document.getElementById('statsRow').innerHTML = html;
+}
+
+function renderTable() {
+  const showComplete = document.getElementById('showComplete').checked;
+  const showRaw = document.getElementById('showRaw').checked;
+  const sortBy = document.getElementById('sortBy').value;
+
+  let filtered = allParties;
+  if (!showComplete) {
+    filtered = filtered.filter(p => !p.is_complete);
+  }
+
+  // Sort
+  filtered = [...filtered].sort((a, b) => {
+    if (sortBy === 'time') return (a.time_slot || '').localeCompare(b.time_slot || '');
+    if (sortBy === 'date') return (a.party_date || '').localeCompare(b.party_date || '') || (a.time_slot || '').localeCompare(b.time_slot || '');
+    if (sortBy === 'updated') return (b.updated_at || '').localeCompare(a.updated_at || '');
+    return a.id - b.id;
+  });
+
+  document.getElementById('countLabel').textContent = `${filtered.length}건`;
+
+  if (filtered.length === 0) {
+    document.getElementById('tableBody').innerHTML =
+      '<tr><td colspan="13" style="text-align:center;padding:40px;color:var(--text-dim);">데이터 없음</td></tr>';
+    return;
+  }
+
+  let html = '';
+  filtered.forEach(p => {
+    html += `<tr>
+      <td class="id-col">${p.id}</td>
+      <td style="white-space:nowrap">${p.party_date || ''}</td>
+      <td style="white-space:nowrap">${p.time_slot || ''}</td>
+      <td>${p.location || '<span style="color:var(--text-dim)">-</span>'}</td>
+      <td>${renderSlots(p.warrior_slots, 'warrior')}</td>
+      <td>${renderSlots(p.rogue_slots, 'rogue')}</td>
+      <td>${renderSlots(p.mage_slots, 'mage')}</td>
+      <td>${renderSlots(p.cleric_slots, 'cleric')}</td>
+      <td>${renderSlots(p.taoist_slots, 'taoist')}</td>
+      <td>${p.is_complete ? '<span class="complete-badge">완비</span>' : '<span class="recruiting-badge">모집</span>'}</td>
+      <td>${p.organizer || '<span class="meta-text">-</span>'}</td>
+      <td class="meta-text" style="white-space:nowrap">${formatTime(p.updated_at)}</td>
+      <td>
+        <div class="actions">
+          <button class="btn btn-ghost btn-sm" onclick="editParty(${p.id})" title="수정">&#x270F;</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteParty(${p.id})" title="삭제">&#x2715;</button>
+        </div>
+      </td>
+    </tr>`;
+
+    if (showRaw && p.raw_message) {
+      html += `<tr><td colspan="13" style="padding: 0 8px 8px 48px;">
+        <div class="raw-msg" onclick="this.classList.toggle('expanded')">${escapeHtml(p.raw_message)}</div>
+      </td></tr>`;
+    }
+  });
+
+  document.getElementById('tableBody').innerHTML = html;
+}
+
+function renderSlots(slots, job) {
+  if (!slots || slots.length === 0) return '<span class="meta-text">-</span>';
+  return '<div class="slot-cell">' + slots.map(s =>
+    s === ''
+      ? `<span class="slot-tag empty ${job}">빈</span>`
+      : `<span class="slot-tag filled ${job}">${escapeHtml(s)}</span>`
+  ).join('') + '</div>';
+}
+
+function formatTime(str) {
+  if (!str) return '-';
+  try {
+    const d = new Date(str);
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  } catch { return str; }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ── Edit Modal ──
+
+function editParty(id) {
+  const party = allParties.find(p => p.id === id);
+  if (!party) return;
+
+  editingId = id;
+  document.getElementById('modalTitle').textContent = `파티 #${id} 수정`;
+
+  document.getElementById('f_party_date').value = party.party_date || '';
+  document.getElementById('f_time_slot').value = party.time_slot || '';
+  document.getElementById('f_location').value = party.location || '';
+  document.getElementById('f_party_name').value = party.party_name || '';
+  document.getElementById('f_organizer').value = party.organizer || '';
+  document.getElementById('f_is_complete').value = party.is_complete ? '1' : '0';
+  document.getElementById('f_requirements').value = JSON.stringify(party.requirements || {}, null, 2);
+  document.getElementById('f_raw_message').value = party.raw_message || '';
+
+  JOB_KEYS.forEach(job => {
+    buildSlotEditor(job, party[job + '_slots'] || []);
+  });
+
+  document.getElementById('editModal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('editModal').classList.remove('open');
+  editingId = null;
+}
+
+function buildSlotEditor(job, slots) {
+  const container = document.getElementById('se_' + job);
+  container.innerHTML = '';
+
+  slots.forEach((s, i) => {
+    const wrap = document.createElement('span');
+    wrap.style.display = 'inline-flex';
+    wrap.style.alignItems = 'center';
+    wrap.style.gap = '2px';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = s;
+    input.placeholder = '(빈자리)';
+    input.dataset.job = job;
+    input.dataset.index = i;
+    if (s === '') input.style.borderColor = 'var(--empty)';
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-slot';
+    removeBtn.textContent = '\u00D7';
+    removeBtn.onclick = () => { wrap.remove(); };
+
+    wrap.appendChild(input);
+    wrap.appendChild(removeBtn);
+    container.appendChild(wrap);
+  });
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'add-slot';
+  addBtn.textContent = '+';
+  addBtn.onclick = () => {
+    const wrap = document.createElement('span');
+    wrap.style.display = 'inline-flex';
+    wrap.style.alignItems = 'center';
+    wrap.style.gap = '2px';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = '';
+    input.placeholder = '(빈자리)';
+    input.style.borderColor = 'var(--empty)';
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-slot';
+    removeBtn.textContent = '\u00D7';
+    removeBtn.onclick = () => { wrap.remove(); };
+
+    wrap.appendChild(input);
+    wrap.appendChild(removeBtn);
+    container.insertBefore(wrap, addBtn);
+  };
+  container.appendChild(addBtn);
+}
+
+function getSlotValues(job) {
+  const container = document.getElementById('se_' + job);
+  const inputs = container.querySelectorAll('input[type="text"]');
+  return Array.from(inputs).map(inp => inp.value.trim());
+}
+
+async function saveParty() {
+  if (!editingId) return;
+
+  const data = {
+    party_date: document.getElementById('f_party_date').value.trim(),
+    time_slot: document.getElementById('f_time_slot').value.trim(),
+    location: document.getElementById('f_location').value.trim() || null,
+    party_name: document.getElementById('f_party_name').value.trim() || null,
+    organizer: document.getElementById('f_organizer').value.trim(),
+    is_complete: parseInt(document.getElementById('f_is_complete').value),
+  };
+
+  JOB_KEYS.forEach(job => {
+    data[job + '_slots'] = JSON.stringify(getSlotValues(job));
+  });
+
+  try {
+    const reqText = document.getElementById('f_requirements').value.trim();
+    data.requirements = reqText ? JSON.stringify(JSON.parse(reqText)) : '{}';
+  } catch {
+    showToast('요구사항 JSON 형식 오류', true);
+    return;
+  }
+
+  try {
+    const resp = await fetch('/api/party/admin/' + editingId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const result = await resp.json();
+
+    if (result.success) {
+      showToast('저장 완료');
+      closeModal();
+      loadParties();
+    } else {
+      showToast('저장 실패: ' + (result.message || ''), true);
+    }
+  } catch (err) {
+    showToast('서버 오류', true);
+    console.error(err);
+  }
+}
+
+async function deleteParty(id) {
+  if (!confirm(`파티 #${id}을(를) 삭제하시겠습니까?`)) return;
+
+  try {
+    const resp = await fetch('/api/party/admin/' + id, { method: 'DELETE' });
+    const result = await resp.json();
+
+    if (result.success) {
+      showToast('삭제 완료');
+      loadParties();
+    } else {
+      showToast('삭제 실패', true);
+    }
+  } catch (err) {
+    showToast('서버 오류', true);
+    console.error(err);
+  }
+}
+
+function showToast(msg, isError = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(() => { el.className = 'toast'; }, 2500);
+}
+
+// Close modal on overlay click
+document.getElementById('editModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+// Close modal on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
+
+// Init
+updateDateDisplay();
+loadParties();
+</script>
+</body>
+</html>

@@ -411,8 +411,9 @@ class PartyService {
 
       // 장소 파싱 (원본 그대로 표시)
       // 나겔목/나겔반은 장비(목걸이/반지)이므로 제외
+      // 낡=나겔 약어 지원 (낡1, 낡2 등)
       if (!location) {
-        const locMatch = line.match(/[#<>★]*(탑층|상층|고층|설원|필드|나겔탑[^\s]*|나겔링|나겔\s*\d층)/);
+        const locMatch = line.match(/[#<>★]*(탑층|상층|고층|설원|필드|나겔탑[^\s]*|나겔링|나겔\s*\d층|낡\d)/);
         if (locMatch) {
           location = locMatch[1];
         }
@@ -907,6 +908,155 @@ class PartyService {
       return { success: true, ...result };
     } catch (e) {
       console.error('getStats error:', e);
+      return { success: false, message: e.message };
+    }
+  }
+
+  // ── 관리자 CRUD ──────────────────────────────────────
+
+  /**
+   * 관리자용 파티 목록 조회 (시간 필터 없이 전체)
+   */
+  getAllPartiesAdmin(date) {
+    if (!this.db) return [];
+
+    let sql = `
+      SELECT id, party_date, time_slot, location, party_name,
+             warrior_slots, rogue_slots, mage_slots, cleric_slots, taoist_slots,
+             requirements, is_complete, organizer, sender_name, room_id,
+             raw_message, created_at, updated_at
+      FROM party_posts
+    `;
+    const params = [];
+
+    if (date) {
+      sql += ` WHERE party_date = ?`;
+      params.push(date);
+    }
+
+    sql += ` ORDER BY party_date DESC, time_slot ASC`;
+
+    const result = this.db.exec(sql, params);
+    if (!result.length || !result[0].values.length) return [];
+
+    return result[0].values.map(row => ({
+      id: row[0],
+      party_date: row[1],
+      time_slot: row[2],
+      location: row[3],
+      party_name: row[4],
+      warrior_slots: this._safeJsonParse(row[5]),
+      rogue_slots: this._safeJsonParse(row[6]),
+      mage_slots: this._safeJsonParse(row[7]),
+      cleric_slots: this._safeJsonParse(row[8]),
+      taoist_slots: this._safeJsonParse(row[9]),
+      requirements: this._safeJsonParse(row[10]),
+      is_complete: row[11],
+      organizer: row[12],
+      sender_name: row[13],
+      room_id: row[14],
+      raw_message: row[15],
+      created_at: row[16],
+      updated_at: row[17]
+    }));
+  }
+
+  /**
+   * 단일 파티 조회
+   */
+  getPartyById(id) {
+    if (!this.db) return null;
+
+    const result = this.db.exec(
+      `SELECT id, party_date, time_slot, location, party_name,
+              warrior_slots, rogue_slots, mage_slots, cleric_slots, taoist_slots,
+              requirements, is_complete, organizer, sender_name, room_id,
+              raw_message, created_at, updated_at
+       FROM party_posts WHERE id = ?`,
+      [id]
+    );
+
+    if (!result.length || !result[0].values.length) return null;
+
+    const row = result[0].values[0];
+    return {
+      id: row[0],
+      party_date: row[1],
+      time_slot: row[2],
+      location: row[3],
+      party_name: row[4],
+      warrior_slots: this._safeJsonParse(row[5]),
+      rogue_slots: this._safeJsonParse(row[6]),
+      mage_slots: this._safeJsonParse(row[7]),
+      cleric_slots: this._safeJsonParse(row[8]),
+      taoist_slots: this._safeJsonParse(row[9]),
+      requirements: this._safeJsonParse(row[10]),
+      is_complete: row[11],
+      organizer: row[12],
+      sender_name: row[13],
+      room_id: row[14],
+      raw_message: row[15],
+      created_at: row[16],
+      updated_at: row[17]
+    };
+  }
+
+  /**
+   * 파티 수정
+   */
+  updateParty(id, data) {
+    if (!this.db) return { success: false };
+
+    try {
+      const fields = [];
+      const params = [];
+
+      const allowedFields = [
+        'party_date', 'time_slot', 'location', 'party_name',
+        'warrior_slots', 'rogue_slots', 'mage_slots', 'cleric_slots', 'taoist_slots',
+        'requirements', 'is_complete', 'organizer', 'sender_name'
+      ];
+
+      const jsonFields = ['warrior_slots', 'rogue_slots', 'mage_slots', 'cleric_slots', 'taoist_slots', 'requirements'];
+
+      for (const field of allowedFields) {
+        if (data[field] !== undefined) {
+          fields.push(`${field} = ?`);
+          if (jsonFields.includes(field)) {
+            params.push(typeof data[field] === 'string' ? data[field] : JSON.stringify(data[field]));
+          } else {
+            params.push(data[field]);
+          }
+        }
+      }
+
+      if (fields.length === 0) return { success: false, message: 'No fields to update' };
+
+      fields.push(`updated_at = datetime('now','localtime')`);
+      params.push(id);
+
+      this.db.run(`UPDATE party_posts SET ${fields.join(', ')} WHERE id = ?`, params);
+      this.saveDb();
+
+      return { success: true };
+    } catch (e) {
+      console.error('updateParty error:', e);
+      return { success: false, message: e.message };
+    }
+  }
+
+  /**
+   * 파티 삭제
+   */
+  deleteParty(id) {
+    if (!this.db) return { success: false };
+
+    try {
+      this.db.run(`DELETE FROM party_posts WHERE id = ?`, [id]);
+      this.saveDb();
+      return { success: true };
+    } catch (e) {
+      console.error('deleteParty error:', e);
       return { success: false, message: e.message };
     }
   }
