@@ -99,15 +99,15 @@ docker run -d \
     ${ENV_FILE:+--env-file "$ENV_FILE"} \
     "$IMAGE_NAME" >> "$LOG_FILE" 2>&1
 
-# iris-bot 코드 동기화 + pycache 삭제 + 재시작
+# iris-bot 코드 동기화 + 네트워크 연결 + 재시작
 IRIS_DIR="$HOME/iris-kakao-bot"
 if [ -d "$IRIS_DIR" ]; then
     cp "$REPO_DIR/iris-kakao-bot/app.py" "$IRIS_DIR/bot-server/app.py" 2>/dev/null
     docker exec iris-bot-server rm -rf /app/__pycache__ 2>/dev/null
+    # 네트워크 먼저 연결 (restart 전에)
+    docker network connect wikibot-net iris-bot-server >> "$LOG_FILE" 2>&1 || true
     docker restart iris-bot-server >> "$LOG_FILE" 2>&1
-    # iris-bot도 같은 네트워크에 연결 (이미 연결되어 있으면 무시)
-    docker network connect wikibot-net iris-bot-server 2>/dev/null
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] iris-bot 동기화 완료" >> "$LOG_FILE"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] iris-bot 동기화 완료 (wikibot-net 연결)" >> "$LOG_FILE"
 fi
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 배포 완료: $(git rev-parse --short HEAD)" >> "$LOG_FILE"
