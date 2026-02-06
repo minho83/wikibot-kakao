@@ -735,7 +735,10 @@ function setFilter(el, job) {
   renderParties();
 }
 
-async function loadParties() {
+let retryCount = 0;
+const MAX_RETRY = 3;
+
+async function loadParties(isRetry = false) {
   const dateStr = formatDate(currentDate);
   const includeComplete = document.getElementById('includeComplete').checked;
 
@@ -743,9 +746,10 @@ async function loadParties() {
     const resp = await fetch(apiUrl('/api/party/vacancy?') + new URLSearchParams({
       date: dateStr,
       include_complete: includeComplete ? '1' : '0'
-    }));
+    }), { signal: AbortSignal.timeout(8000) });
     const data = await resp.json();
 
+    retryCount = 0;
     if (data.success) {
       allParties = data.parties || [];
       renderStats(data);
@@ -757,10 +761,23 @@ async function loadParties() {
     }
   } catch (err) {
     console.error('Load error:', err);
-    const hint = SERVER_URL ? SERVER_URL : 'localhost';
+    // Auto retry up to 3 times with increasing delay
+    if (retryCount < MAX_RETRY) {
+      retryCount++;
+      const delay = retryCount * 2000;
+      document.getElementById('content').innerHTML =
+        `<div class="empty-state"><div class="empty-state-icon">&#x1F504;</div><h3>Reconnecting... (${retryCount}/${MAX_RETRY})</h3></div>`;
+      setTimeout(() => loadParties(true), delay);
+      return;
+    }
+    const isLocal = !SERVER_URL && location.protocol !== 'file:';
+    const msg = isLocal
+      ? 'Server temporarily unavailable. Will retry on next refresh.'
+      : 'Server not responding. Check server URL above.';
     document.getElementById('content').innerHTML =
-      `<div class="empty-state"><div class="empty-state-icon">&#x26A0;</div><h3>Connection Error</h3><p>${hint} - Server not responding</p><p style="margin-top:8px;font-size:13px;">Enter server URL at the top and click Connect</p></div>`;
+      `<div class="empty-state"><div class="empty-state-icon">&#x26A0;</div><h3>Connection Error</h3><p>${msg}</p></div>`;
     document.getElementById('serverStatus').className = 'server-status err';
+    retryCount = 0;
   }
 
   refreshCountdown = 30;
