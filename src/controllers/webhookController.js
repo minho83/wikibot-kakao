@@ -123,10 +123,9 @@ router.post('/kakao', async (req, res) => {
       case '!통계':
         result = searchService.getStats();
         break;
-      case '!게시판':
-      case '!커뮤니티':
+      case '!현자':
         if (!parsedMessage.query) {
-          result = { success: false, message: '검색어를 입력해주세요.\n예: !게시판 발록' };
+          result = { success: false, message: '검색어를 입력해주세요.\n예: !현자 발록' };
         } else {
           try {
             const commResult = await communityService.searchAndParse(parsedMessage.query);

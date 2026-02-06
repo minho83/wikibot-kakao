@@ -877,10 +877,22 @@ function buildTimeChips() {
 
 let retryCount = 0;
 const MAX_RETRY = 3;
+let isLoading = false;
 
 async function loadParties(isRetry = false) {
+  if (isLoading && !isRetry) return;
+  isLoading = true;
+  refreshCountdown = 30;
+
   const dateStr = formatDate(currentDate);
   const includeComplete = document.getElementById('includeComplete').checked;
+
+  // 첫 로드가 아니면 기존 데이터 유지 (빈 화면 방지)
+  const isFirstLoad = allParties.length === 0 && !isRetry;
+  if (isFirstLoad) {
+    document.getElementById('content').innerHTML =
+      '<div class="loading"><div class="spinner"></div><div style="color: var(--text-dim);">불러오는 중...</div></div>';
+  }
 
   try {
     const resp = await fetch(apiUrl('/api/party/vacancy?') + new URLSearchParams({
@@ -903,26 +915,32 @@ async function loadParties(isRetry = false) {
     }
   } catch (err) {
     console.error('Load error:', err);
-    // Auto retry up to 3 times with increasing delay
     if (retryCount < MAX_RETRY) {
       retryCount++;
       const delay = retryCount * 2000;
-      document.getElementById('content').innerHTML =
-        `<div class="empty-state"><div class="empty-state-icon">&#x1F504;</div><h3>재연결 중... (${retryCount}/${MAX_RETRY})</h3></div>`;
+      // 기존 데이터가 있으면 화면 유지, 없을 때만 재연결 표시
+      if (allParties.length === 0) {
+        document.getElementById('content').innerHTML =
+          `<div class="empty-state"><div class="empty-state-icon">&#x1F504;</div><h3>재연결 중... (${retryCount}/${MAX_RETRY})</h3></div>`;
+      }
       setTimeout(() => loadParties(true), delay);
+      isLoading = false;
       return;
     }
-    const isLocal = !SERVER_URL && location.protocol !== 'file:';
-    const msg = isLocal
-      ? '서버에 일시적으로 연결할 수 없습니다. 자동으로 재시도합니다.'
-      : '서버에 연결할 수 없습니다. 상단에서 서버 URL을 확인해주세요.';
-    document.getElementById('content').innerHTML =
-      `<div class="empty-state"><div class="empty-state-icon">&#x26A0;</div><h3>연결 오류</h3><p>${msg}</p></div>`;
+    // 기존 데이터가 있으면 유지
+    if (allParties.length === 0) {
+      const isLocal = !SERVER_URL && location.protocol !== 'file:';
+      const msg = isLocal
+        ? '서버에 일시적으로 연결할 수 없습니다. 자동으로 재시도합니다.'
+        : '서버에 연결할 수 없습니다. 상단에서 서버 URL을 확인해주세요.';
+      document.getElementById('content').innerHTML =
+        `<div class="empty-state"><div class="empty-state-icon">&#x26A0;</div><h3>연결 오류</h3><p>${msg}</p></div>`;
+    }
     document.getElementById('serverStatus').className = 'server-status err';
     retryCount = 0;
   }
 
-  refreshCountdown = 30;
+  isLoading = false;
   checkServerStatus();
 }
 
