@@ -99,12 +99,6 @@ docker run -d \
 IRIS_DIR="$HOME/iris-kakao-bot"
 if [ -d "$IRIS_DIR" ]; then
     cp "$REPO_DIR/iris-kakao-bot/app.py" "$IRIS_DIR/bot-server/app.py" 2>/dev/null
-    # Docker 브릿지 게이트웨이 IP로 WIKIBOT_URL 주입 (컨테이너→호스트 통신)
-    HOST_GW=$(docker network inspect bridge --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null)
-    if [ -n "$HOST_GW" ]; then
-        sed -i "s|WIKIBOT_URL = .*|WIKIBOT_URL = 'http://${HOST_GW}:8214'|" "$IRIS_DIR/bot-server/app.py"
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] WIKIBOT_URL = http://${HOST_GW}:8214" >> "$LOG_FILE"
-    fi
     docker exec iris-bot-server rm -rf /app/__pycache__ 2>/dev/null
     docker restart iris-bot-server >> "$LOG_FILE" 2>&1
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] iris-bot 동기화 완료" >> "$LOG_FILE"
