@@ -86,9 +86,18 @@ class PartyService {
       )
     `);
 
+    // organizer 컬럼 마이그레이션 (기존 DB 호환)
+    try {
+      this.db.run(`ALTER TABLE party_posts ADD COLUMN organizer TEXT`);
+    } catch (e) {
+      // 이미 존재하면 무시
+    }
+
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_party_date ON party_posts(party_date, time_slot)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_party_room ON party_posts(room_id, party_date)`);
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_party_unique ON party_posts(party_date, time_slot, sender_name, room_id)`);
+    // 기존 sender_name 기반 인덱스 → organizer 기반으로 변경
+    this.db.run(`DROP INDEX IF EXISTS idx_party_unique`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_party_organizer ON party_posts(party_date, time_slot, organizer, room_id)`);
   }
 
   saveDb() {
@@ -240,6 +249,30 @@ class PartyService {
     return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   }
 
+  // ── 주최자 파싱 ──────────────────────────────────────
+
+  /**
+   * 메시지 마지막 부분에서 @주최자 파싱
+   * @param {string} rawMessage - 전체 메시지
+   * @returns {string|null} - 주최자 닉네임 (서버명 제외)
+   */
+  parseOrganizer(rawMessage) {
+    if (!rawMessage) return null;
+
+    // 마지막 5줄에서 @이름 또는 @이름/서버 패턴 탐색
+    const lines = rawMessage.split('\n').map(l => l.trim()).filter(l => l);
+    const lastLines = lines.slice(-5);
+
+    for (let i = lastLines.length - 1; i >= 0; i--) {
+      const match = lastLines[i].match(/^@([^\s/]+)/);
+      if (match) {
+        return match[1];
+      }
+    }
+
+    return null;
+  }
+
   // ── 시간 파싱 ──────────────────────────────────────
 
   /**
@@ -349,6 +382,9 @@ class PartyService {
     const lines = rawMessage.split('\n').map(l => l.trim()).filter(l => l);
     const parties = [];
 
+    // 주최자 파싱
+    const organizer = this.parseOrganizer(rawMessage);
+
     // 메시지 전체에서 날짜 찾기
     let partyDate = null;
     let location = null;
@@ -422,6 +458,7 @@ class PartyService {
             requirements: JSON.stringify(requirements),
             is_complete: isComplete ? 1 : 0,
             raw_message: rawMessage,
+            organizer: organizer || senderInfo.name || '',
             sender_name: senderInfo.name || '',
             room_id: senderInfo.room_id || ''
           });
@@ -457,6 +494,7 @@ class PartyService {
         requirements: JSON.stringify(requirements),
         is_complete: isComplete ? 1 : 0,
         raw_message: rawMessage,
+        organizer: organizer || senderInfo.name || '',
         sender_name: senderInfo.name || '',
         room_id: senderInfo.room_id || ''
       });
@@ -487,13 +525,13 @@ class PartyService {
     for (const party of parties) {
       if (!party.party_date || !party.time_slot) continue;
 
-      // 같은 날짜/시간대/주최자/방의 기존 파티가 있으면 업데이트, 없으면 삽입
-      // (같은 주최자가 올린 파티만 최신으로 갱신, 다른 주최자 파티는 별도 저장)
+      // 같은 날짜/시간대/주최자(organizer)/방의 기존 파티가 있으면 업데이트, 없으면 삽입
+      // organizer 기준으로 중복 판별 → 다른 사람이 같은 파티를 올려도 하나로 합침
       const existing = this.db.exec(
         `SELECT id FROM party_posts
-         WHERE party_date = ? AND time_slot = ? AND sender_name = ? AND room_id = ?
+         WHERE party_date = ? AND time_slot = ? AND organizer = ? AND room_id = ?
          ORDER BY updated_at DESC LIMIT 1`,
-        [party.party_date, party.time_slot, party.sender_name, party.room_id]
+        [party.party_date, party.time_slot, party.organizer, party.room_id]
       );
 
       if (existing.length > 0 && existing[0].values.length > 0) {
@@ -503,14 +541,14 @@ class PartyService {
            location = ?, party_name = ?,
            warrior_slots = ?, rogue_slots = ?, mage_slots = ?,
            cleric_slots = ?, taoist_slots = ?, requirements = ?,
-           is_complete = ?, raw_message = ?, sender_name = ?,
+           is_complete = ?, raw_message = ?, organizer = ?, sender_name = ?,
            updated_at = datetime('now','localtime')
            WHERE id = ?`,
           [
             party.location, party.party_name,
             party.warrior_slots, party.rogue_slots, party.mage_slots,
             party.cleric_slots, party.taoist_slots, party.requirements,
-            party.is_complete, party.raw_message, party.sender_name,
+            party.is_complete, party.raw_message, party.organizer, party.sender_name,
             id
           ]
         );
@@ -519,14 +557,14 @@ class PartyService {
           `INSERT INTO party_posts
            (party_date, time_slot, location, party_name,
             warrior_slots, rogue_slots, mage_slots, cleric_slots, taoist_slots,
-            requirements, is_complete, raw_message, sender_name, room_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            requirements, is_complete, raw_message, organizer, sender_name, room_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             party.party_date, party.time_slot, party.location, party.party_name,
             party.warrior_slots, party.rogue_slots, party.mage_slots,
             party.cleric_slots, party.taoist_slots,
             party.requirements, party.is_complete, party.raw_message,
-            party.sender_name, party.room_id
+            party.organizer, party.sender_name, party.room_id
           ]
         );
       }
@@ -597,7 +635,7 @@ class PartyService {
     let sql = `
       SELECT id, party_date, time_slot, location, party_name,
              warrior_slots, rogue_slots, mage_slots, cleric_slots, taoist_slots,
-             requirements, is_complete, sender_name, updated_at
+             requirements, is_complete, organizer, sender_name, updated_at
       FROM party_posts
       WHERE party_date = ?
     `;
@@ -638,8 +676,9 @@ class PartyService {
       taoist_slots: this._safeJsonParse(row[9]),
       requirements: this._safeJsonParse(row[10]),
       is_complete: row[11],
-      sender_name: row[12],
-      updated_at: row[13]
+      organizer: row[12],
+      sender_name: row[13],
+      updated_at: row[14]
     }));
 
     // 빈자리 있는 파티만 필터
@@ -743,8 +782,9 @@ class PartyService {
     for (const party of parties) {
       // 파티 헤더: [장소] 시간 @주최자
       const locationName = party.location || '미정';
-      const senderName = party.sender_name ? `@${party.sender_name.split('/')[0]}` : '';
-      lines.push(`[${locationName}] ${party.time_slot} ${senderName}`.trim());
+      const displayName = party.organizer || (party.sender_name ? party.sender_name.split('/')[0] : '');
+      const nameTag = displayName ? `@${displayName}` : '';
+      lines.push(`[${locationName}] ${party.time_slot} ${nameTag}`.trim());
 
       // 빈자리 정보
       const emptyInfo = [];

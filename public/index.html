@@ -1028,7 +1028,7 @@ function renderPartyCard(party) {
   const locIcon = Object.entries(LOCATION_ICONS).find(([k]) => loc.includes(k));
   const icon = locIcon ? locIcon[1] : '&#x1F4CD;';
   const isComplete = party.is_complete;
-  const sender = party.sender_name ? party.sender_name.split('/')[0] : '';
+  const sender = party.organizer || (party.sender_name ? party.sender_name.split('/')[0] : '');
   const vacancies = party.vacancies || {};
 
   // Vacancy tags
