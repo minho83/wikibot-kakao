@@ -525,17 +525,24 @@ class PartyService {
     for (const party of parties) {
       if (!party.party_date || !party.time_slot) continue;
 
-      // 같은 날짜/시간대/주최자(organizer)/방의 기존 파티가 있으면 업데이트, 없으면 삽입
-      // organizer 기준으로 중복 판별 → 다른 사람이 같은 파티를 올려도 하나로 합침
-      const existing = this.db.exec(
+      // 1단계: organizer 기준으로 기존 파티 검색
+      let matchId = null;
+      const byOrganizer = this.db.exec(
         `SELECT id FROM party_posts
          WHERE party_date = ? AND time_slot = ? AND organizer = ? AND room_id = ?
          ORDER BY updated_at DESC LIMIT 1`,
         [party.party_date, party.time_slot, party.organizer, party.room_id]
       );
+      if (byOrganizer.length > 0 && byOrganizer[0].values.length > 0) {
+        matchId = byOrganizer[0].values[0][0];
+      }
 
-      if (existing.length > 0 && existing[0].values.length > 0) {
-        const id = existing[0].values[0][0];
+      // 2단계: organizer 매칭 실패 시, 멤버 겹침으로 같은 파티 검색
+      if (!matchId) {
+        matchId = this._findByMemberOverlap(party);
+      }
+
+      if (matchId) {
         this.db.run(
           `UPDATE party_posts SET
            location = ?, party_name = ?,
@@ -549,7 +556,7 @@ class PartyService {
             party.warrior_slots, party.rogue_slots, party.mage_slots,
             party.cleric_slots, party.taoist_slots, party.requirements,
             party.is_complete, party.raw_message, party.organizer, party.sender_name,
-            id
+            matchId
           ]
         );
       } else {
@@ -575,6 +582,62 @@ class PartyService {
     }
 
     return parties;
+  }
+
+  /**
+   * 같은 날짜/시간대에 멤버가 겹치는 기존 파티 검색
+   * @returns {number|null} - 매칭된 party_posts.id
+   */
+  _findByMemberOverlap(party) {
+    const candidates = this.db.exec(
+      `SELECT id, warrior_slots, rogue_slots, mage_slots, cleric_slots, taoist_slots
+       FROM party_posts
+       WHERE party_date = ? AND time_slot = ? AND room_id = ?`,
+      [party.party_date, party.time_slot, party.room_id]
+    );
+
+    if (!candidates.length || !candidates[0].values.length) return null;
+
+    const newMembers = this._extractFilledMembers(party);
+    if (newMembers.size < 2) return null;
+
+    for (const row of candidates[0].values) {
+      const existingMembers = this._extractFilledMembersFromRow(row);
+      if (existingMembers.size < 2) continue;
+
+      const overlap = [...newMembers].filter(m => existingMembers.has(m)).length;
+      // 작은 쪽 기준 50% 이상 겹치고, 최소 2명 이상 겹치면 같은 파티
+      const threshold = Math.min(newMembers.size, existingMembers.size) * 0.5;
+      if (overlap >= threshold && overlap >= 2) {
+        return row[0]; // id
+      }
+    }
+
+    return null;
+  }
+
+  _extractFilledMembers(party) {
+    const members = new Set();
+    const jobs = ['warrior', 'rogue', 'mage', 'cleric', 'taoist'];
+    for (const job of jobs) {
+      const slots = this._safeJsonParse(party[`${job}_slots`]);
+      for (const s of slots) {
+        if (s && s.trim()) members.add(s.trim());
+      }
+    }
+    return members;
+  }
+
+  _extractFilledMembersFromRow(row) {
+    const members = new Set();
+    // row: [id, warrior_slots, rogue_slots, mage_slots, cleric_slots, taoist_slots]
+    for (let i = 1; i <= 5; i++) {
+      const slots = this._safeJsonParse(row[i]);
+      for (const s of slots) {
+        if (s && s.trim()) members.add(s.trim());
+      }
+    }
+    return members;
   }
 
   _isPartyMessage(message) {

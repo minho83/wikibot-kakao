@@ -848,3 +848,31 @@ describe('parseMessage - organizer', () => {
     expect(JSON.parse(result[0].taoist_slots)).toEqual(['춘의역', '']);
   });
 });
+
+// ═══════════════════════════════════════════════════
+// _findByMemberOverlap / _extractFilledMembers 테스트
+// ═══════════════════════════════════════════════════
+describe('_extractFilledMembers', () => {
+  test('빈 슬롯 제외하고 멤버만 추출', () => {
+    const party = {
+      warrior_slots: JSON.stringify(['닉1', '']),
+      rogue_slots: JSON.stringify(['닉2', '닉3']),
+      mage_slots: JSON.stringify(['']),
+      cleric_slots: JSON.stringify([]),
+      taoist_slots: JSON.stringify(['닉4'])
+    };
+    const members = service._extractFilledMembers(party);
+    expect(members).toEqual(new Set(['닉1', '닉2', '닉3', '닉4']));
+  });
+
+  test('빈 파티 → 빈 Set', () => {
+    const party = {
+      warrior_slots: JSON.stringify([]),
+      rogue_slots: JSON.stringify([]),
+      mage_slots: JSON.stringify([]),
+      cleric_slots: JSON.stringify([]),
+      taoist_slots: JSON.stringify([])
+    };
+    expect(service._extractFilledMembers(party).size).toBe(0);
+  });
+});
