@@ -184,6 +184,12 @@ router.post('/kakao', async (req, res) => {
           result = { success: false, message: '업데이트 조회 중 오류가 발생했습니다.' };
         }
         break;
+      case '!파티':
+        result = {
+          success: true,
+          message: '📋 파티 빈자리 현황\n\n아래 링크에서 실시간 파티 빈자리를 확인하세요!\n👉 https://party.milddok.cc/\n\n* 어둠의전설 나겔파티 오픈톡 데이터 기반\n* 수집상태에 따라 오차가 있을 수 있습니다.'
+        };
+        break;
       case '!도움말':
         result = responseFormatter.getHelpMessage();
         break;
