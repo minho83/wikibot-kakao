@@ -79,6 +79,9 @@ for db in nickname.db notice.db trade.db party.db; do
     fi
 done
 
+# 공유 Docker 네트워크 생성 (wikibot ↔ iris-bot 통신용)
+docker network create wikibot-net 2>/dev/null
+
 # wikibot 컨테이너 재시작 (DB + LOD_DB 볼륨 마운트)
 docker stop "$CONTAINER_NAME" 2>/dev/null
 sleep 3  # SIGTERM 처리 대기
@@ -86,6 +89,7 @@ docker rm "$CONTAINER_NAME" 2>/dev/null
 docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
+    --network wikibot-net \
     -p 8214:3000 \
     -v "$DB_DIR/nickname.db:/app/nickname.db" \
     -v "$DB_DIR/notice.db:/app/notice.db" \
@@ -101,6 +105,8 @@ if [ -d "$IRIS_DIR" ]; then
     cp "$REPO_DIR/iris-kakao-bot/app.py" "$IRIS_DIR/bot-server/app.py" 2>/dev/null
     docker exec iris-bot-server rm -rf /app/__pycache__ 2>/dev/null
     docker restart iris-bot-server >> "$LOG_FILE" 2>&1
+    # iris-bot도 같은 네트워크에 연결 (이미 연결되어 있으면 무시)
+    docker network connect wikibot-net iris-bot-server 2>/dev/null
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] iris-bot 동기화 완료" >> "$LOG_FILE"
 fi
 
