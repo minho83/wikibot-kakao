@@ -38,7 +38,8 @@
       "Bash(git status:*)",
       "Bash(git checkout:*)",
       "Bash(git merge:*)",
-      "Bash(git submodule:*)"
+      "Bash(git submodule:*)",
+      "Bash(python3 -m json.tool:*)"
     ],
     "deny": []
   }
