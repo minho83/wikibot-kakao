@@ -559,6 +559,34 @@
     color: var(--text-dim);
   }
 
+  /* Filter toggle (mobile only) */
+  .filter-toggle {
+    display: none;
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    align-items: center;
+    justify-content: space-between;
+    transition: border-color 0.15s;
+  }
+
+  .filter-toggle:hover { border-color: var(--accent); }
+
+  .filter-arrow {
+    font-size: 10px;
+    color: var(--text-dim);
+    transition: transform 0.2s;
+  }
+
+  .filter-arrow.open { transform: rotate(180deg); }
+
   /* Responsive */
   @media (max-width: 768px) {
     .header { padding: 10px 0 6px; }
@@ -579,6 +607,17 @@
     .date-nav .date-display { font-size: 14px; padding: 4px 8px; min-width: 100px; }
     .date-nav button { padding: 4px 8px; font-size: 13px; }
 
+    /* Collapsible filter on mobile */
+    .filter-toggle { display: flex; }
+    .filter-body {
+      display: none;
+      flex-direction: column;
+      width: 100%;
+      padding-top: 8px;
+    }
+    .filter-body.open { display: flex; }
+    .filter-area { flex-direction: column; padding-top: 8px !important; }
+
     /* Horizontal scrollable filter chips */
     .filter-chips {
       flex-wrap: nowrap;
@@ -589,9 +628,6 @@
     }
     .filter-chips::-webkit-scrollbar { display: none; }
     .chip { padding: 4px 11px; font-size: 12px; }
-
-    /* Reduce second header row padding */
-    .header-inner:last-child { padding-top: 6px !important; }
 
     /* Compact notice bar */
     .notice-bar { padding: 6px 12px; font-size: 11px; }
@@ -643,17 +679,23 @@
       </div>
     </div>
   </div>
-  <div class="header-inner" style="padding-top: 12px;">
-    <div class="filter-chips" id="filterChips">
-      <button class="chip active" data-job="" onclick="setFilter(this, '')">전체</button>
-      <button class="chip" data-job="warrior" onclick="setFilter(this, 'warrior')">전사</button>
-      <button class="chip" data-job="rogue" onclick="setFilter(this, 'rogue')">도적</button>
-      <button class="chip" data-job="mage" onclick="setFilter(this, 'mage')">법사</button>
-      <button class="chip" data-job="cleric" onclick="setFilter(this, 'cleric')">직자</button>
-      <button class="chip" data-job="taoist" onclick="setFilter(this, 'taoist')">도가</button>
-    </div>
-    <div class="filter-chips" id="timeChips" style="margin-top: 8px;">
-      <button class="chip active" onclick="setTimeFilter(this, '')">전체 시간</button>
+  <div class="header-inner filter-area" style="padding-top: 12px;">
+    <button class="filter-toggle" id="filterToggle" onclick="toggleFilters()">
+      <span id="filterSummary">전체</span>
+      <span class="filter-arrow" id="filterArrow">&#9660;</span>
+    </button>
+    <div class="filter-body" id="filterBody">
+      <div class="filter-chips" id="filterChips">
+        <button class="chip active" data-job="" onclick="setFilter(this, '')">전체</button>
+        <button class="chip" data-job="warrior" onclick="setFilter(this, 'warrior')">전사</button>
+        <button class="chip" data-job="rogue" onclick="setFilter(this, 'rogue')">도적</button>
+        <button class="chip" data-job="mage" onclick="setFilter(this, 'mage')">법사</button>
+        <button class="chip" data-job="cleric" onclick="setFilter(this, 'cleric')">직자</button>
+        <button class="chip" data-job="taoist" onclick="setFilter(this, 'taoist')">도가</button>
+      </div>
+      <div class="filter-chips" id="timeChips" style="margin-top: 8px;">
+        <button class="chip active" onclick="setTimeFilter(this, '')">전체 시간</button>
+      </div>
     </div>
   </div>
 </div>
@@ -790,6 +832,7 @@ function setFilter(el, job) {
   } else {
     el.className = 'chip active';
   }
+  updateFilterSummary();
   renderParties();
 }
 
@@ -799,7 +842,24 @@ function setTimeFilter(el, time) {
     c.className = 'chip';
   });
   el.className = 'chip active';
+  updateFilterSummary();
   renderParties();
+}
+
+function toggleFilters() {
+  const body = document.getElementById('filterBody');
+  const arrow = document.getElementById('filterArrow');
+  body.classList.toggle('open');
+  arrow.classList.toggle('open');
+}
+
+function updateFilterSummary() {
+  const jobName = currentFilter ? JOB_INFO[currentFilter].kr : '전체';
+  const timeName = currentTimeFilter || '전체 시간';
+  const parts = [];
+  parts.push(jobName);
+  if (currentTimeFilter) parts.push(timeName);
+  document.getElementById('filterSummary').textContent = parts.join(' · ');
 }
 
 function buildTimeChips() {
