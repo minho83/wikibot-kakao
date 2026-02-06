@@ -298,7 +298,7 @@ class PartyService {
     const jobMap = {
       '전사': 'warrior', '데빌': 'warrior',
       '도적': 'rogue',
-      '법사': 'mage', '딜법': 'mage', '아나테마': 'mage', '인식': 'mage',
+      '법사': 'mage', '딜법': 'mage', '아나테마': 'mage', '인식': 'mage', '세손': 'mage', '세손법': 'mage',
       '직자': 'cleric',
       '도가': 'taoist', '무도가': 'taoist'
     };

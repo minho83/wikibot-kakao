@@ -86,7 +86,7 @@ docker rm "$CONTAINER_NAME" 2>/dev/null
 docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
-    -p 8100:3000 \
+    -p 8214:3000 \
     -v "$DB_DIR/nickname.db:/app/nickname.db" \
     -v "$DB_DIR/notice.db:/app/notice.db" \
     -v "$DB_DIR/trade.db:/app/trade.db" \

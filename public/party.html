@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LOD Party Board</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --card-hover: #222633;
+    --border: #2a2e3d;
+    --text: #e1e4ed;
+    --text-dim: #8b90a0;
+    --accent: #6c72cb;
+    --warrior: #e74c3c;
+    --warrior-bg: rgba(231,76,60,0.12);
+    --rogue: #9b59b6;
+    --rogue-bg: rgba(155,89,182,0.12);
+    --mage: #3498db;
+    --mage-bg: rgba(52,152,219,0.12);
+    --cleric: #f1c40f;
+    --cleric-bg: rgba(241,196,15,0.12);
+    --taoist: #1abc9c;
+    --taoist-bg: rgba(26,188,156,0.12);
+    --empty: #e67e22;
+    --complete: #27ae60;
+  }
+
+  body {
+    font-family: 'Segoe UI', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #1a1d27 0%, #252a3a 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(10px);
+  }
+
+  .header-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-icon {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, var(--accent), #cb69c1);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+  }
+
+  .logo h1 {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+
+  .logo h1 span {
+    color: var(--accent);
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .date-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px;
+  }
+
+  .date-nav button {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 7px;
+    font-size: 14px;
+    transition: all 0.15s;
+  }
+
+  .date-nav button:hover {
+    background: var(--card-hover);
+    color: var(--text);
+  }
+
+  .date-nav .date-display {
+    font-size: 15px;
+    font-weight: 600;
+    padding: 6px 12px;
+    min-width: 120px;
+    text-align: center;
+  }
+
+  .filter-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .chip {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .chip:hover { border-color: var(--accent); color: var(--text); }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chip.active-warrior { background: var(--warrior); border-color: var(--warrior); color: #fff; }
+  .chip.active-rogue { background: var(--rogue); border-color: var(--rogue); color: #fff; }
+  .chip.active-mage { background: var(--mage); border-color: var(--mage); color: #fff; }
+  .chip.active-cleric { background: var(--cleric); border-color: var(--cleric); color: #111; }
+  .chip.active-taoist { background: var(--taoist); border-color: var(--taoist); color: #fff; }
+
+  .main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+
+  /* Stats bar */
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+  }
+
+  .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), #cb69c1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .stat-label {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* Time group */
+  .time-group {
+    margin-bottom: 32px;
+  }
+
+  .time-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .time-badge {
+    background: linear-gradient(135deg, var(--accent), #cb69c1);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: 8px;
+    letter-spacing: 0.5px;
+  }
+
+  .time-count {
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  /* Party cards */
+  .party-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+  }
+
+  .party-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .party-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  }
+
+  .party-card.complete {
+    opacity: 0.5;
+  }
+
+  .party-card.complete::after {
+    content: 'FULL';
+    position: absolute;
+    top: 12px;
+    right: -28px;
+    background: var(--complete);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 32px;
+    transform: rotate(45deg);
+    letter-spacing: 1px;
+  }
+
+  .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 14px;
+  }
+
+  .card-location {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .location-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    background: rgba(108,114,203,0.15);
+  }
+
+  .location-name {
+    font-weight: 700;
+    font-size: 16px;
+  }
+
+  .party-name {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .card-meta {
+    text-align: right;
+  }
+
+  .card-sender {
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .card-updated {
+    font-size: 11px;
+    color: var(--text-dim);
+    opacity: 0.6;
+  }
+
+  /* Vacancy summary */
+  .vacancy-summary {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+
+  .vacancy-tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .vacancy-tag.warrior { background: var(--warrior-bg); color: var(--warrior); }
+  .vacancy-tag.rogue { background: var(--rogue-bg); color: var(--rogue); }
+  .vacancy-tag.mage { background: var(--mage-bg); color: var(--mage); }
+  .vacancy-tag.cleric { background: var(--cleric-bg); color: var(--cleric); }
+  .vacancy-tag.taoist { background: var(--taoist-bg); color: var(--taoist); }
+
+  /* Slot rows */
+  .slot-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .slot-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .slot-job {
+    width: 36px;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .slot-job.warrior { color: var(--warrior); }
+  .slot-job.rogue { color: var(--rogue); }
+  .slot-job.mage { color: var(--mage); }
+  .slot-job.cleric { color: var(--cleric); }
+  .slot-job.taoist { color: var(--taoist); }
+
+  .slot-list {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    flex: 1;
+  }
+
+  .slot {
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid;
+    min-width: 60px;
+    text-align: center;
+  }
+
+  .slot.filled {
+    border-color: var(--border);
+    background: rgba(255,255,255,0.03);
+    color: var(--text-dim);
+  }
+
+  .slot.empty {
+    border-style: dashed;
+    animation: pulse-border 2s ease-in-out infinite;
+  }
+
+  .slot.empty.warrior { border-color: var(--warrior); color: var(--warrior); background: var(--warrior-bg); }
+  .slot.empty.rogue { border-color: var(--rogue); color: var(--rogue); background: var(--rogue-bg); }
+  .slot.empty.mage { border-color: var(--mage); color: var(--mage); background: var(--mage-bg); }
+  .slot.empty.cleric { border-color: var(--cleric); color: var(--cleric); background: var(--cleric-bg); }
+  .slot.empty.taoist { border-color: var(--taoist); color: var(--taoist); background: var(--taoist-bg); }
+
+  @keyframes pulse-border {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  /* Requirements */
+  .requirements {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  .req-item {
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 2px 0;
+  }
+
+  .req-item strong {
+    color: var(--text);
+  }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 80px 24px;
+    color: var(--text-dim);
+  }
+
+  .empty-state-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.3;
+  }
+
+  .empty-state h3 {
+    font-size: 18px;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+
+  /* Auto refresh indicator */
+  .refresh-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .refresh-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--complete);
+    animation: blink 2s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Loading */
+  .loading {
+    text-align: center;
+    padding: 60px;
+  }
+
+  .spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .include-complete-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .include-complete-wrap input {
+    accent-color: var(--accent);
+  }
+
+  /* Server config bar */
+  .server-bar {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 24px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .server-bar label {
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+
+  .server-bar input {
+    flex: 1;
+    max-width: 360px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 10px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: monospace;
+  }
+
+  .server-bar input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .server-bar button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .server-bar button:hover { opacity: 0.85; }
+
+  .server-status {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #555;
+    flex-shrink: 0;
+  }
+
+  .server-status.ok { background: var(--complete); }
+  .server-status.err { background: var(--warrior); }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .header-inner { padding: 0 16px; }
+    .main { padding: 16px; }
+    .party-grid { grid-template-columns: 1fr; }
+    .stats-bar { grid-template-columns: repeat(2, 1fr); }
+    .controls { width: 100%; justify-content: space-between; }
+  }
+</style>
+</head>
+<body>
+
+<div class="server-bar" id="serverBar">
+  <div class="server-status" id="serverStatus"></div>
+  <label>Server:</label>
+  <input type="text" id="serverUrl" placeholder="http://서버IP:3000" spellcheck="false">
+  <button onclick="connectServer()">Connect</button>
+</div>
+
+<div class="header">
+  <div class="header-inner">
+    <div class="logo">
+      <div class="logo-icon">P</div>
+      <h1>Party <span>Board</span></h1>
+    </div>
+    <div class="controls">
+      <div class="date-nav">
+        <button onclick="changeDate(-1)" title="Previous day">&#9664;</button>
+        <div class="date-display" id="dateDisplay"></div>
+        <button onclick="changeDate(1)" title="Next day">&#9654;</button>
+      </div>
+      <label class="include-complete-wrap">
+        <input type="checkbox" id="includeComplete" onchange="loadParties()">
+        <span>Full party</span>
+      </label>
+      <div class="refresh-bar">
+        <div class="refresh-dot"></div>
+        <span id="refreshTimer">30s</span>
+      </div>
+    </div>
+  </div>
+  <div class="header-inner" style="padding-top: 12px;">
+    <div class="filter-chips" id="filterChips">
+      <button class="chip active" data-job="" onclick="setFilter(this, '')">All</button>
+      <button class="chip" data-job="warrior" onclick="setFilter(this, 'warrior')">Warrior</button>
+      <button class="chip" data-job="rogue" onclick="setFilter(this, 'rogue')">Rogue</button>
+      <button class="chip" data-job="mage" onclick="setFilter(this, 'mage')">Mage</button>
+      <button class="chip" data-job="cleric" onclick="setFilter(this, 'cleric')">Cleric</button>
+      <button class="chip" data-job="taoist" onclick="setFilter(this, 'taoist')">Taoist</button>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="stats-bar" id="statsBar"></div>
+  <div id="content">
+    <div class="loading">
+      <div class="spinner"></div>
+      <div style="color: var(--text-dim);">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Server URL management ──
+let SERVER_URL = '';
+
+function getServerUrl() {
+  // 1. Query param: ?server=http://...
+  const params = new URLSearchParams(location.search);
+  const fromParam = params.get('server');
+  if (fromParam) return fromParam.replace(/\/+$/, '');
+
+  // 2. localStorage
+  const saved = localStorage.getItem('partyServerUrl');
+  if (saved) return saved.replace(/\/+$/, '');
+
+  // 3. Same origin (when served from server itself)
+  if (location.protocol !== 'file:') return '';
+
+  return '';
+}
+
+function initServerUrl() {
+  SERVER_URL = getServerUrl();
+  const input = document.getElementById('serverUrl');
+  input.value = SERVER_URL;
+
+  // Hide bar if served from server itself
+  if (!SERVER_URL && location.protocol !== 'file:') {
+    document.getElementById('serverBar').style.display = 'none';
+  }
+}
+
+function connectServer() {
+  const input = document.getElementById('serverUrl');
+  let url = input.value.trim().replace(/\/+$/, '');
+  if (url && !url.startsWith('http')) url = 'http://' + url;
+  SERVER_URL = url;
+  localStorage.setItem('partyServerUrl', url);
+  loadParties();
+}
+
+function apiUrl(path) {
+  return SERVER_URL + path;
+}
+
+async function checkServerStatus() {
+  const dot = document.getElementById('serverStatus');
+  try {
+    const resp = await fetch(apiUrl('/health'), { signal: AbortSignal.timeout(5000) });
+    const data = await resp.json();
+    dot.className = data.status === 'ok' ? 'server-status ok' : 'server-status err';
+  } catch {
+    dot.className = 'server-status err';
+  }
+}
+
+const JOB_INFO = {
+  warrior: { name: 'Warrior', kr: '전사', icon: '&#x2694;' },
+  rogue:   { name: 'Rogue',   kr: '도적', icon: '&#x1F5E1;' },
+  mage:    { name: 'Mage',    kr: '법사', icon: '&#x2728;' },
+  cleric:  { name: 'Cleric',  kr: '직자', icon: '&#x2695;' },
+  taoist:  { name: 'Taoist',  kr: '도가', icon: '&#x262F;' }
+};
+
+const LOCATION_ICONS = {
+  '탑층': '&#x1F3F0;', '상층': '&#x1F3DB;', '고층': '&#x26F0;',
+  '설원': '&#x2744;', '필드': '&#x1F332;',
+  '나겔탑': '&#x1F5FC;', '나겔링': '&#x1F48D;'
+};
+
+let currentDate = new Date();
+let currentFilter = '';
+let refreshInterval = null;
+let refreshCountdown = 30;
+let allParties = [];
+
+// Initialize to Korean time
+(function initKoreanDate() {
+  const koStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' });
+  currentDate = new Date(koStr);
+  currentDate.setHours(0, 0, 0, 0);
+})();
+
+function formatDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatDisplayDate(d) {
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dName = dayNames[d.getDay()];
+  const koStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' });
+  const today = new Date(koStr);
+  today.setHours(0, 0, 0, 0);
+  const isToday = d.getTime() === today.getTime();
+  return `${month}/${day} (${dName})${isToday ? ' TODAY' : ''}`;
+}
+
+function changeDate(delta) {
+  currentDate.setDate(currentDate.getDate() + delta);
+  updateDateDisplay();
+  loadParties();
+}
+
+function updateDateDisplay() {
+  document.getElementById('dateDisplay').textContent = formatDisplayDate(currentDate);
+}
+
+function setFilter(el, job) {
+  currentFilter = job;
+  document.querySelectorAll('.chip').forEach(c => {
+    c.className = 'chip';
+  });
+  if (job) {
+    el.className = `chip active-${job}`;
+  } else {
+    el.className = 'chip active';
+  }
+  renderParties();
+}
+
+async function loadParties() {
+  const dateStr = formatDate(currentDate);
+  const includeComplete = document.getElementById('includeComplete').checked;
+
+  try {
+    const resp = await fetch(apiUrl('/api/party/vacancy?') + new URLSearchParams({
+      date: dateStr,
+      include_complete: includeComplete ? '1' : '0'
+    }));
+    const data = await resp.json();
+
+    if (data.success) {
+      allParties = data.parties || [];
+      renderStats(data);
+      renderParties();
+    } else {
+      allParties = [];
+      renderStats({ stats: {} });
+      renderParties();
+    }
+  } catch (err) {
+    console.error('Load error:', err);
+    const hint = SERVER_URL ? SERVER_URL : 'localhost';
+    document.getElementById('content').innerHTML =
+      `<div class="empty-state"><div class="empty-state-icon">&#x26A0;</div><h3>Connection Error</h3><p>${hint} - Server not responding</p><p style="margin-top:8px;font-size:13px;">Enter server URL at the top and click Connect</p></div>`;
+    document.getElementById('serverStatus').className = 'server-status err';
+  }
+
+  refreshCountdown = 30;
+  checkServerStatus();
+}
+
+function renderStats(data) {
+  const stats = data.stats || {};
+  const parties = allParties;
+  const totalVacancies = parties.reduce((sum, p) => sum + (p.vacancies?.total || 0), 0);
+  const vacantParties = parties.filter(p => (p.vacancies?.total || 0) > 0).length;
+
+  const jobVacancies = {};
+  Object.keys(JOB_INFO).forEach(job => {
+    jobVacancies[job] = parties.reduce((sum, p) => sum + (p.vacancies?.[job] || 0), 0);
+  });
+
+  let html = `
+    <div class="stat-card">
+      <div class="stat-value">${parties.length}</div>
+      <div class="stat-label">Total Parties</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${vacantParties}</div>
+      <div class="stat-label">Parties w/ Spots</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${totalVacancies}</div>
+      <div class="stat-label">Open Slots</div>
+    </div>
+  `;
+
+  Object.entries(JOB_INFO).forEach(([key, info]) => {
+    if (jobVacancies[key] > 0) {
+      html += `
+        <div class="stat-card">
+          <div class="stat-value" style="-webkit-text-fill-color: var(--${key}); background: none;">${jobVacancies[key]}</div>
+          <div class="stat-label">${info.kr} Spots</div>
+        </div>
+      `;
+    }
+  });
+
+  document.getElementById('statsBar').innerHTML = html;
+}
+
+function renderParties() {
+  const container = document.getElementById('content');
+  let filtered = allParties;
+
+  if (currentFilter) {
+    filtered = allParties.filter(p => (p.vacancies?.[currentFilter] || 0) > 0);
+  }
+
+  if (filtered.length === 0) {
+    const filterName = currentFilter ? JOB_INFO[currentFilter].kr : '';
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">&#x1F50D;</div>
+        <h3>No Parties Found</h3>
+        <p>${filterName ? filterName + ' spot available party not found.' : 'No party data for this date.'}</p>
+      </div>
+    `;
+    return;
+  }
+
+  // Group by time_slot
+  const groups = {};
+  filtered.forEach(p => {
+    const ts = p.time_slot || 'Unknown';
+    if (!groups[ts]) groups[ts] = [];
+    groups[ts].push(p);
+  });
+
+  const sortedTimes = Object.keys(groups).sort();
+  let html = '';
+
+  sortedTimes.forEach(time => {
+    const parties = groups[time];
+    const vacantCount = parties.filter(p => (p.vacancies?.total || 0) > 0).length;
+
+    html += `
+      <div class="time-group">
+        <div class="time-header">
+          <span class="time-badge">${time}</span>
+          <span class="time-count">${parties.length} parties${vacantCount > 0 ? ` &middot; ${vacantCount} spots open` : ''}</span>
+        </div>
+        <div class="party-grid">
+    `;
+
+    parties.forEach(p => {
+      html += renderPartyCard(p);
+    });
+
+    html += '</div></div>';
+  });
+
+  container.innerHTML = html;
+}
+
+function renderPartyCard(party) {
+  const loc = party.location || 'Unknown';
+  const locIcon = Object.entries(LOCATION_ICONS).find(([k]) => loc.includes(k));
+  const icon = locIcon ? locIcon[1] : '&#x1F4CD;';
+  const isComplete = party.is_complete;
+  const sender = party.sender_name ? party.sender_name.split('/')[0] : '';
+  const vacancies = party.vacancies || {};
+
+  // Vacancy tags
+  let vacancyTags = '';
+  Object.entries(JOB_INFO).forEach(([key, info]) => {
+    const count = vacancies[key] || 0;
+    if (count > 0) {
+      vacancyTags += `<span class="vacancy-tag ${key}">${info.kr} ${count} spot${count > 1 ? 's' : ''}</span>`;
+    }
+  });
+
+  // Slot rows
+  let slotRows = '';
+  const jobs = ['warrior', 'rogue', 'mage', 'cleric', 'taoist'];
+  jobs.forEach(job => {
+    const slots = party[`${job}_slots`] || [];
+    if (slots.length === 0) return;
+
+    const info = JOB_INFO[job];
+    let slotsHtml = '';
+    slots.forEach(s => {
+      if (s === '') {
+        slotsHtml += `<span class="slot empty ${job}">OPEN</span>`;
+      } else {
+        slotsHtml += `<span class="slot filled">${s}</span>`;
+      }
+    });
+
+    slotRows += `
+      <div class="slot-row">
+        <span class="slot-job ${job}">${info.kr}</span>
+        <div class="slot-list">${slotsHtml}</div>
+      </div>
+    `;
+  });
+
+  // Requirements
+  let reqHtml = '';
+  const reqs = party.requirements || {};
+  if (typeof reqs === 'object' && Object.keys(reqs).length > 0) {
+    reqHtml = '<div class="requirements">';
+    Object.entries(reqs).forEach(([job, req]) => {
+      reqHtml += `<div class="req-item"><strong>${job}</strong>: ${req}</div>`;
+    });
+    reqHtml += '</div>';
+  }
+
+  return `
+    <div class="party-card${isComplete ? ' complete' : ''}">
+      <div class="card-top">
+        <div class="card-location">
+          <div class="location-icon">${icon}</div>
+          <div>
+            <div class="location-name">${loc}</div>
+            ${party.party_name ? `<div class="party-name">${party.party_name}</div>` : ''}
+          </div>
+        </div>
+        <div class="card-meta">
+          ${sender ? `<div class="card-sender">@${sender}</div>` : ''}
+          ${party.updated_at ? `<div class="card-updated">${formatTimeAgo(party.updated_at)}</div>` : ''}
+        </div>
+      </div>
+      ${vacancyTags ? `<div class="vacancy-summary">${vacancyTags}</div>` : ''}
+      <div class="slot-rows">${slotRows}</div>
+      ${reqHtml}
+    </div>
+  `;
+}
+
+function formatTimeAgo(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diff = Math.floor((now - d) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+// Auto refresh
+function startRefreshTimer() {
+  if (refreshInterval) clearInterval(refreshInterval);
+  refreshInterval = setInterval(() => {
+    refreshCountdown--;
+    document.getElementById('refreshTimer').textContent = `${refreshCountdown}s`;
+    if (refreshCountdown <= 0) {
+      loadParties();
+    }
+  }, 1000);
+}
+
+// Init
+initServerUrl();
+updateDateDisplay();
+loadParties();
+checkServerStatus();
+startRefreshTimer();
+
+// Enter key on server input
+document.getElementById('serverUrl').addEventListener('keydown', e => {
+  if (e.key === 'Enter') connectServer();
+});
+</script>
+</body>
+</html>

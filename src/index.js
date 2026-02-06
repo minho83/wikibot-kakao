@@ -78,6 +78,10 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// 정적 파일 서빙
+const path = require('path');
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
 // 숫자를 한글 단위로 변환 (예: 150000000 → "1억 5,000만")
 function formatGold(num) {
   if (!num || num === 0) return '0';
@@ -644,6 +648,46 @@ app.get('/api/trade/rooms', async (req, res) => {
 });
 
 // ── 파티 모집 API ──────────────────────────────────────
+
+// 파티 빈자리 조회 (웹페이지용)
+app.get('/api/party/vacancy', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { date, job, include_complete } = req.query;
+    const includeComplete = include_complete === '1';
+
+    const result = partyService.queryParties({
+      date: date || '오늘',
+      job: job || null,
+      includeComplete
+    });
+
+    // 빈자리 정보를 포함한 파티 목록 반환
+    const partiesWithVacancies = (result.parties || []).map(p => {
+      const vacancies = { total: 0 };
+      const jobs = ['warrior', 'rogue', 'mage', 'cleric', 'taoist'];
+      for (const j of jobs) {
+        const slots = p[`${j}_slots`] || [];
+        const empty = slots.filter(s => s === '').length;
+        vacancies[j] = empty;
+        vacancies.total += empty;
+      }
+      return { ...p, vacancies };
+    });
+
+    const stats = partyService.getStats();
+
+    res.json({
+      success: true,
+      date: date || partyService._formatDate(partyService._getKoreanDate()),
+      parties: partiesWithVacancies,
+      stats
+    });
+  } catch (error) {
+    console.error('Party vacancy error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 // 파티 메시지 수집
 app.post('/api/party/collect', async (req, res) => {
