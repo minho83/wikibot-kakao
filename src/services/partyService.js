@@ -409,13 +409,19 @@ class PartyService {
         }
       }
 
-      // 장소 파싱 (원본 그대로 표시)
+      // 장소 파싱 - includes 방식으로 키워드 매칭
       // 나겔목/나겔반은 장비(목걸이/반지)이므로 제외
-      // 낡=나겔 약어 지원 (낡1, 낡2 등)
       if (!location) {
-        const locMatch = line.match(/[#<>★]*(탑층|상층|고층|설원|필드|나겔탑[^\s]*|나겔링|나겔\s*\d층|낡\d)/);
-        if (locMatch) {
-          location = locMatch[1];
+        const LOC_KEYWORDS = ['나겔탑', '나겔링', '낡', '탑층', '상층', '고층', '설원', '필드'];
+        const LOC_EXCLUDE = ['나겔목', '나겔반'];
+        const hasExclude = LOC_EXCLUDE.some(ex => line.includes(ex));
+        if (!hasExclude) {
+          for (const kw of LOC_KEYWORDS) {
+            if (line.includes(kw)) {
+              location = kw;
+              break;
+            }
+          }
         }
       }
 
