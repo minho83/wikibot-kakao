@@ -549,6 +549,16 @@
   .server-status.ok { background: var(--complete); }
   .server-status.err { background: var(--warrior); }
 
+  /* Notice bar */
+  .notice-bar {
+    background: linear-gradient(90deg, rgba(108,114,203,0.15), rgba(203,105,193,0.15));
+    border-bottom: 1px solid var(--border);
+    padding: 8px 24px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
   /* Responsive */
   @media (max-width: 768px) {
     .header-inner { padding: 0 16px; }
@@ -566,6 +576,10 @@
   <label>Server:</label>
   <input type="text" id="serverUrl" placeholder="http://서버IP:3000" spellcheck="false">
   <button onclick="connectServer()">연결</button>
+</div>
+
+<div class="notice-bar">
+  <span>정보출처 : 어둠의전설 나겔파티 오픈톡 | 데이터 수집상태에 따라 오차가 있으니 참고!</span>
 </div>
 
 <div class="header">
