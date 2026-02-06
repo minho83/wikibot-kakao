@@ -561,11 +561,50 @@
 
   /* Responsive */
   @media (max-width: 768px) {
-    .header-inner { padding: 0 16px; }
-    .main { padding: 16px; }
+    .header { padding: 10px 0 6px; }
+    .header-inner { padding: 0 12px; gap: 8px; }
+    .main { padding: 12px; }
     .party-grid { grid-template-columns: 1fr; }
-    .stats-bar { grid-template-columns: repeat(2, 1fr); }
+    .stats-bar { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .stat-card { padding: 10px; }
+    .stat-value { font-size: 22px; }
+    .stat-label { font-size: 11px; }
     .controls { width: 100%; justify-content: space-between; }
+
+    /* Hide logo on mobile to save space */
+    .logo { display: none; }
+
+    /* Compact date nav */
+    .date-nav { border-radius: 8px; }
+    .date-nav .date-display { font-size: 14px; padding: 4px 8px; min-width: 100px; }
+    .date-nav button { padding: 4px 8px; font-size: 13px; }
+
+    /* Horizontal scrollable filter chips */
+    .filter-chips {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding-bottom: 2px;
+    }
+    .filter-chips::-webkit-scrollbar { display: none; }
+    .chip { padding: 4px 11px; font-size: 12px; }
+
+    /* Reduce second header row padding */
+    .header-inner:last-child { padding-top: 6px !important; }
+
+    /* Compact notice bar */
+    .notice-bar { padding: 6px 12px; font-size: 11px; }
+
+    /* Compact server bar */
+    .server-bar { padding: 6px 12px; font-size: 12px; }
+
+    /* Compact party cards */
+    .party-card { padding: 14px; border-radius: 12px; }
+    .location-name { font-size: 14px; }
+    .location-icon { width: 28px; height: 28px; font-size: 14px; border-radius: 6px; }
+    .card-sender { font-size: 14px; }
+    .time-badge { font-size: 13px; padding: 4px 10px; }
   }
 </style>
 </head>
