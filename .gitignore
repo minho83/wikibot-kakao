@@ -79,3 +79,6 @@ ehthumbs.db
 Thumbs.db
 # Data directory (Docker volume)
 data/
+
+# Claude Code
+.claude/
