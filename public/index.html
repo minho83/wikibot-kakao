@@ -1025,7 +1025,7 @@ function renderParties() {
       const jobs = ['warrior', 'rogue', 'mage', 'cleric', 'taoist'];
       return jobs.some(job => {
         const slots = p[`${job}_slots`] || [];
-        return slots.some(s => s && s.toLowerCase() === searchName);
+        return slots.some(s => s && s.toLowerCase().includes(searchName));
       });
     });
   }
@@ -1112,7 +1112,7 @@ function renderPartyCard(party) {
       if (s === '') {
         slotsHtml += `<span class="slot empty ${job}">모집중</span>`;
       } else {
-        const isMe = mySearchName && s.toLowerCase() === mySearchName.toLowerCase();
+        const isMe = mySearchName && s.toLowerCase().includes(mySearchName.toLowerCase());
         slotsHtml += `<span class="slot filled${isMe ? ' my-slot' : ''}">${s}</span>`;
       }
     });
