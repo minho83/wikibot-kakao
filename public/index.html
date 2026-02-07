@@ -39,43 +39,42 @@
   .header {
     background: linear-gradient(135deg, #1a1d27 0%, #252a3a 100%);
     border-bottom: 1px solid var(--border);
-    padding: 20px 0;
     position: sticky;
     top: 0;
     z-index: 100;
     backdrop-filter: blur(10px);
   }
 
-  .header-inner {
+  /* Row 1: Logo + Date + Actions */
+  .header-row {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 0 24px;
+    padding: 12px 24px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
     gap: 16px;
   }
 
   .logo {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
+    flex-shrink: 0;
   }
 
   .logo-icon {
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
     background: linear-gradient(135deg, var(--accent), #cb69c1);
-    border-radius: 10px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 20px;
+    font-size: 16px;
   }
 
   .logo h1 {
-    font-size: 20px;
+    font-size: 17px;
     font-weight: 700;
     letter-spacing: -0.5px;
   }
@@ -84,21 +83,21 @@
     color: var(--accent);
   }
 
-  .controls {
+  .header-center {
+    flex: 1;
     display: flex;
     align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
+    justify-content: center;
   }
 
   .date-nav {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 4px;
+    padding: 3px;
   }
 
   .date-nav button {
@@ -106,9 +105,9 @@
     border: none;
     color: var(--text-dim);
     cursor: pointer;
-    padding: 6px 10px;
+    padding: 5px 10px;
     border-radius: 7px;
-    font-size: 14px;
+    font-size: 13px;
     transition: all 0.15s;
   }
 
@@ -118,77 +117,62 @@
   }
 
   .date-nav .date-display {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
-    padding: 6px 12px;
-    min-width: 120px;
+    padding: 5px 10px;
+    min-width: 110px;
     text-align: center;
   }
 
-  .filter-chips {
+  .header-actions {
     display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
   }
 
-  .chip {
-    padding: 6px 14px;
-    border-radius: 20px;
-    border: 1px solid var(--border);
-    background: var(--bg);
+  /* Row 2: Filters - single row */
+  .filter-bar {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .filter-label {
+    font-size: 11px;
     color: var(--text-dim);
-    cursor: pointer;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .filter-spacer {
+    flex: 1;
+  }
+
+  .filter-select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
     font-size: 13px;
     font-weight: 500;
-    transition: all 0.15s;
-    white-space: nowrap;
+    padding: 5px 10px;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.15s;
   }
 
-  .chip:hover { border-color: var(--accent); color: var(--text); }
-  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .chip.active-warrior { background: var(--warrior); border-color: var(--warrior); color: #fff; }
-  .chip.active-rogue { background: var(--rogue); border-color: var(--rogue); color: #fff; }
-  .chip.active-mage { background: var(--mage); border-color: var(--mage); color: #fff; }
-  .chip.active-cleric { background: var(--cleric); border-color: var(--cleric); color: #111; }
-  .chip.active-taoist { background: var(--taoist); border-color: var(--taoist); color: #fff; }
+  .filter-select:hover, .filter-select:focus {
+    border-color: var(--accent);
+  }
 
   .main {
     max-width: 1200px;
     margin: 0 auto;
     padding: 24px;
-  }
-
-  /* Stats bar */
-  .stats-bar {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 12px;
-    margin-bottom: 24px;
-  }
-
-  .stat-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 16px;
-    text-align: center;
-  }
-
-  .stat-value {
-    font-size: 28px;
-    font-weight: 700;
-    background: linear-gradient(135deg, var(--accent), #cb69c1);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  .stat-label {
-    font-size: 12px;
-    color: var(--text-dim);
-    margin-top: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
   }
 
   /* Time group */
@@ -445,29 +429,106 @@
     opacity: 0.6;
   }
 
-  /* Blank template button */
+  /* Template & search buttons */
   .template-btn {
-    background: rgba(108,114,203,0.15);
-    border: 1px solid var(--accent);
-    color: var(--accent);
+    background: linear-gradient(135deg, var(--accent), #cb69c1);
+    border: none;
+    color: #fff;
     font-size: 12px;
     font-weight: 600;
-    padding: 6px 12px;
+    padding: 5px 12px;
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.15s;
     white-space: nowrap;
   }
 
-  .template-btn:hover {
-    background: var(--accent);
-    color: #fff;
-  }
+  .template-btn:hover { opacity: 0.85; transform: scale(1.03); }
 
   .template-btn.copied {
     background: var(--complete);
-    border-color: var(--complete);
+  }
+
+  /* My party search */
+  .my-search {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .my-search input {
+    width: 110px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 5px 10px;
+    color: var(--text);
+    font-size: 12px;
+  }
+
+  .my-search input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .my-search input::placeholder {
+    color: var(--text-dim);
+    opacity: 0.6;
+  }
+
+  .my-search-btn {
+    background: var(--accent);
+    border: none;
     color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.15s;
+  }
+
+  .my-search-btn:hover { opacity: 0.85; }
+
+  .my-search-clear {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 11px;
+    padding: 5px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: none;
+  }
+
+  .my-search-clear.show { display: block; }
+
+  /* Highlight my party card */
+  .party-card.my-party {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 4px 16px rgba(108,114,203,0.25);
+  }
+
+  .party-card.my-party .slot.my-slot {
+    background: rgba(108,114,203,0.2);
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  .my-party-badge {
+    display: none;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent);
+    background: rgba(108,114,203,0.15);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  .party-card.my-party .my-party-badge {
+    display: inline-block;
   }
 
   /* Requirements */
@@ -510,14 +571,14 @@
   .refresh-bar {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 12px;
+    gap: 5px;
+    font-size: 11px;
     color: var(--text-dim);
   }
 
   .refresh-dot {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     background: var(--complete);
     animation: blink 2s ease-in-out infinite;
@@ -549,15 +610,18 @@
   .include-complete-wrap {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 13px;
+    gap: 4px;
+    font-size: 11px;
     color: var(--text-dim);
     cursor: pointer;
     user-select: none;
+    white-space: nowrap;
   }
 
   .include-complete-wrap input {
     accent-color: var(--accent);
+    width: 14px;
+    height: 14px;
   }
 
   /* Server config bar */
@@ -627,75 +691,22 @@
     color: var(--text-dim);
   }
 
-  /* Filter toggle (mobile only) */
-  .filter-toggle {
-    display: none;
-    width: 100%;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 14px;
-    color: var(--text);
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    text-align: left;
-    align-items: center;
-    justify-content: space-between;
-    transition: border-color 0.15s;
-  }
-
-  .filter-toggle:hover { border-color: var(--accent); }
-
-  .filter-arrow {
-    font-size: 10px;
-    color: var(--text-dim);
-    transition: transform 0.2s;
-  }
-
-  .filter-arrow.open { transform: rotate(180deg); }
-
   /* Responsive */
   @media (max-width: 768px) {
-    .header { padding: 10px 0 6px; }
-    .header-inner { padding: 0 12px; gap: 8px; }
     .main { padding: 12px; }
     .party-grid { grid-template-columns: 1fr; }
-    .stats-bar { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-    .stat-card { padding: 10px; }
-    .stat-value { font-size: 22px; }
-    .stat-label { font-size: 11px; }
-    .controls { width: 100%; justify-content: space-between; }
-
-    /* Hide logo on mobile to save space */
+    /* Header compact */
+    .header-row { padding: 8px 12px; gap: 8px; }
     .logo { display: none; }
+    .header-center { justify-content: flex-start; }
+    .date-nav .date-display { font-size: 13px; padding: 4px 8px; min-width: 95px; }
+    .date-nav button { padding: 4px 8px; font-size: 12px; }
 
-    /* Compact date nav */
-    .date-nav { border-radius: 8px; }
-    .date-nav .date-display { font-size: 14px; padding: 4px 8px; min-width: 100px; }
-    .date-nav button { padding: 4px 8px; font-size: 13px; }
-
-    /* Collapsible filter on mobile */
-    .filter-toggle { display: flex; }
-    .filter-body {
-      display: none;
-      flex-direction: column;
-      width: 100%;
-      padding-top: 8px;
-    }
-    .filter-body.open { display: flex; }
-    .filter-area { flex-direction: column; padding-top: 8px !important; }
-
-    /* Horizontal scrollable filter chips */
-    .filter-chips {
-      flex-wrap: nowrap;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-      padding-bottom: 2px;
-    }
-    .filter-chips::-webkit-scrollbar { display: none; }
-    .chip { padding: 4px 11px; font-size: 12px; }
+    /* Filter bar */
+    .filter-bar { padding: 0 12px 8px; gap: 6px; flex-wrap: wrap; }
+    .filter-select { font-size: 12px; flex: 1; }
+    .filter-spacer { display: none; }
+    .filter-label { font-size: 10px; }
 
     /* Compact notice bar */
     .notice-bar { padding: 6px 12px; font-size: 11px; }
@@ -709,6 +720,11 @@
     .location-icon { width: 28px; height: 28px; font-size: 14px; border-radius: 6px; }
     .card-sender { font-size: 14px; }
     .time-badge { font-size: 13px; padding: 4px 10px; }
+
+    /* My search & template compact */
+    .my-search { flex: 1; min-width: 0; }
+    .my-search input { flex: 1; min-width: 0; width: auto; }
+    .template-btn { font-size: 11px; padding: 4px 8px; }
   }
 </style>
 </head>
@@ -726,51 +742,45 @@
 </div>
 
 <div class="header">
-  <div class="header-inner">
+  <div class="header-row">
     <div class="logo">
       <div class="logo-icon">P</div>
       <h1>파티 <span>빈자리</span></h1>
     </div>
-    <div class="controls">
+    <div class="header-center">
       <div class="date-nav">
         <button onclick="changeDate(-1)" title="Previous day">&#9664;</button>
         <div class="date-display" id="dateDisplay"></div>
         <button onclick="changeDate(1)" title="Next day">&#9654;</button>
       </div>
+    </div>
+    <div class="header-actions">
       <label class="include-complete-wrap">
         <input type="checkbox" id="includeComplete" onchange="loadParties()">
-        <span>완비 포함</span>
+        <span>완비</span>
       </label>
-      <button class="template-btn" onclick="copyBlankTemplate(this)">📝 기본양식 복사</button>
       <div class="refresh-bar">
         <div class="refresh-dot"></div>
         <span id="refreshTimer">30s</span>
       </div>
     </div>
   </div>
-  <div class="header-inner filter-area" style="padding-top: 12px;">
-    <button class="filter-toggle" id="filterToggle" onclick="toggleFilters()">
-      <span id="filterSummary">전체</span>
-      <span class="filter-arrow" id="filterArrow">&#9660;</span>
-    </button>
-    <div class="filter-body" id="filterBody">
-      <div class="filter-chips" id="filterChips">
-        <button class="chip active" data-job="" onclick="setFilter(this, '')">전체</button>
-        <button class="chip" data-job="warrior" onclick="setFilter(this, 'warrior')">전사</button>
-        <button class="chip" data-job="rogue" onclick="setFilter(this, 'rogue')">도적</button>
-        <button class="chip" data-job="mage" onclick="setFilter(this, 'mage')">법사</button>
-        <button class="chip" data-job="cleric" onclick="setFilter(this, 'cleric')">직자</button>
-        <button class="chip" data-job="taoist" onclick="setFilter(this, 'taoist')">도가</button>
-      </div>
-      <div class="filter-chips" id="timeChips" style="margin-top: 8px;">
-        <button class="chip active" onclick="setTimeFilter(this, '')">전체 시간</button>
-      </div>
+  <div class="filter-bar">
+    <span class="filter-label">직업</span>
+    <select class="filter-select" id="jobFilter" onchange="setFilter(this.value)"></select>
+    <span class="filter-label">시간</span>
+    <select class="filter-select" id="timeFilter" onchange="setTimeFilter(this.value)"></select>
+    <div class="filter-spacer"></div>
+    <div class="my-search">
+      <input type="text" id="myNameInput" placeholder="캐릭터명" spellcheck="false">
+      <button class="my-search-btn" onclick="searchMyParty()">내파티 검색</button>
+      <button class="my-search-clear" id="mySearchClear" onclick="clearMySearch()">✕</button>
     </div>
+    <button class="template-btn" onclick="copyBlankTemplate(this)">📝 기본양식 복사</button>
   </div>
 </div>
 
 <div class="main">
-  <div class="stats-bar" id="statsBar"></div>
   <div id="content">
     <div class="loading">
       <div class="spinner"></div>
@@ -855,6 +865,7 @@ let refreshInterval = null;
 let refreshCountdown = 30;
 let allParties = [];
 let partyDataMap = {};
+let mySearchName = '';
 
 // Initialize to Korean time
 (function initKoreanDate() {
@@ -892,57 +903,40 @@ function updateDateDisplay() {
   document.getElementById('dateDisplay').textContent = formatDisplayDate(currentDate);
 }
 
-function setFilter(el, job) {
+function setFilter(job) {
   currentFilter = job;
-  document.querySelectorAll('#filterChips .chip').forEach(c => {
-    c.className = 'chip';
-  });
-  if (job) {
-    el.className = `chip active-${job}`;
-  } else {
-    el.className = 'chip active';
-  }
-  updateFilterSummary();
   renderParties();
 }
 
-function setTimeFilter(el, time) {
+function setTimeFilter(time) {
   currentTimeFilter = time;
-  document.querySelectorAll('#timeChips .chip').forEach(c => {
-    c.className = 'chip';
-  });
-  el.className = 'chip active';
-  updateFilterSummary();
   renderParties();
 }
 
-function toggleFilters() {
-  const body = document.getElementById('filterBody');
-  const arrow = document.getElementById('filterArrow');
-  body.classList.toggle('open');
-  arrow.classList.toggle('open');
-}
 
-function updateFilterSummary() {
-  const jobName = currentFilter ? JOB_INFO[currentFilter].kr : '전체';
-  const timeName = currentTimeFilter || '전체 시간';
-  const parts = [];
-  parts.push(jobName);
-  if (currentTimeFilter) parts.push(timeName);
-  document.getElementById('filterSummary').textContent = parts.join(' · ');
+function buildJobChips() {
+  const select = document.getElementById('jobFilter');
+  const totalVacant = allParties.filter(p => (p.vacancies?.total || 0) > 0).length;
+  let html = `<option value="">전체 (${totalVacant})</option>`;
+  Object.entries(JOB_INFO).forEach(([key, info]) => {
+    const count = allParties.reduce((sum, p) => sum + (p.vacancies?.[key] || 0), 0);
+    const countStr = count > 0 ? ` (${count})` : '';
+    html += `<option value="${key}"${currentFilter === key ? ' selected' : ''}>${info.kr}${countStr}</option>`;
+  });
+  select.innerHTML = html;
 }
 
 function buildTimeChips() {
   const times = [...new Set(allParties.map(p => p.time_slot))].sort();
-  const container = document.getElementById('timeChips');
-  const isAllActive = !currentTimeFilter;
-  let html = `<button class="chip${isAllActive ? ' active' : ''}" onclick="setTimeFilter(this, '')">전체 시간</button>`;
+  const select = document.getElementById('timeFilter');
+  let html = `<option value="">전체 시간</option>`;
   times.forEach(t => {
-    const count = allParties.filter(p => p.time_slot === t).length;
-    const isActive = currentTimeFilter === t;
-    html += `<button class="chip${isActive ? ' active' : ''}" onclick="setTimeFilter(this, '${t}')">${t} (${count})</button>`;
+    const timeParties = allParties.filter(p => p.time_slot === t);
+    const vacantCount = timeParties.reduce((sum, p) => sum + (p.vacancies?.total || 0), 0);
+    const countStr = vacantCount > 0 ? ` (${vacantCount})` : '';
+    html += `<option value="${t}"${currentTimeFilter === t ? ' selected' : ''}>${t}${countStr}</option>`;
   });
-  container.innerHTML = html;
+  select.innerHTML = html;
 }
 
 let retryCount = 0;
@@ -974,13 +968,13 @@ async function loadParties(isRetry = false) {
     retryCount = 0;
     if (data.success) {
       allParties = data.parties || [];
+      buildJobChips();
       buildTimeChips();
-      renderStats(data);
       renderParties();
     } else {
       allParties = [];
+      buildJobChips();
       buildTimeChips();
-      renderStats({ stats: {} });
       renderParties();
     }
   } catch (err) {
@@ -1014,46 +1008,6 @@ async function loadParties(isRetry = false) {
   checkServerStatus();
 }
 
-function renderStats(data) {
-  const stats = data.stats || {};
-  const parties = allParties;
-  const totalVacancies = parties.reduce((sum, p) => sum + (p.vacancies?.total || 0), 0);
-  const vacantParties = parties.filter(p => (p.vacancies?.total || 0) > 0).length;
-
-  const jobVacancies = {};
-  Object.keys(JOB_INFO).forEach(job => {
-    jobVacancies[job] = parties.reduce((sum, p) => sum + (p.vacancies?.[job] || 0), 0);
-  });
-
-  let html = `
-    <div class="stat-card">
-      <div class="stat-value">${parties.length}</div>
-      <div class="stat-label">전체 파티</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">${vacantParties}</div>
-      <div class="stat-label">빈자리 파티</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">${totalVacancies}</div>
-      <div class="stat-label">빈자리 수</div>
-    </div>
-  `;
-
-  Object.entries(JOB_INFO).forEach(([key, info]) => {
-    if (jobVacancies[key] > 0) {
-      html += `
-        <div class="stat-card">
-          <div class="stat-value" style="-webkit-text-fill-color: var(--${key}); background: none;">${jobVacancies[key]}</div>
-          <div class="stat-label">${info.kr} 빈자리</div>
-        </div>
-      `;
-    }
-  });
-
-  document.getElementById('statsBar').innerHTML = html;
-}
-
 function renderParties() {
   partyDataMap = {};
   const container = document.getElementById('content');
@@ -1065,14 +1019,30 @@ function renderParties() {
   if (currentTimeFilter) {
     filtered = filtered.filter(p => p.time_slot === currentTimeFilter);
   }
+  if (mySearchName) {
+    const searchName = mySearchName.toLowerCase();
+    filtered = filtered.filter(p => {
+      const jobs = ['warrior', 'rogue', 'mage', 'cleric', 'taoist'];
+      return jobs.some(job => {
+        const slots = p[`${job}_slots`] || [];
+        return slots.some(s => s && s.toLowerCase() === searchName);
+      });
+    });
+  }
 
   if (filtered.length === 0) {
     const filterName = currentFilter ? JOB_INFO[currentFilter].kr : '';
+    let emptyMsg = '해당 날짜에 파티 데이터가 없습니다.';
+    if (mySearchName) {
+      emptyMsg = `"${mySearchName}" 님이 참여중인 파티가 없습니다.`;
+    } else if (filterName) {
+      emptyMsg = filterName + ' 빈자리가 있는 파티가 없습니다.';
+    }
     container.innerHTML = `
       <div class="empty-state">
         <div class="empty-state-icon">&#x1F50D;</div>
         <h3>파티 없음</h3>
-        <p>${filterName ? filterName + ' 빈자리가 있는 파티가 없습니다.' : '해당 날짜에 파티 데이터가 없습니다.'}</p>
+        <p>${emptyMsg}</p>
       </div>
     `;
     return;
@@ -1142,7 +1112,8 @@ function renderPartyCard(party) {
       if (s === '') {
         slotsHtml += `<span class="slot empty ${job}">모집중</span>`;
       } else {
-        slotsHtml += `<span class="slot filled">${s}</span>`;
+        const isMe = mySearchName && s.toLowerCase() === mySearchName.toLowerCase();
+        slotsHtml += `<span class="slot filled${isMe ? ' my-slot' : ''}">${s}</span>`;
       }
     });
 
@@ -1168,13 +1139,23 @@ function renderPartyCard(party) {
   const cardId = `party-${party.id || Math.random().toString(36).slice(2)}`;
   partyDataMap[cardId] = party;
 
+  // 내 파티 여부 확인
+  let isMyParty = false;
+  if (mySearchName) {
+    const name = mySearchName.toLowerCase();
+    isMyParty = jobs.some(job => {
+      const slots = party[`${job}_slots`] || [];
+      return slots.some(s => s && s.toLowerCase() === name);
+    });
+  }
+
   return `
-    <div class="party-card${isComplete ? ' complete' : ''}">
+    <div class="party-card${isComplete ? ' complete' : ''}${isMyParty ? ' my-party' : ''}">
       <div class="card-top">
         <div class="card-location">
           <div class="location-icon">${icon}</div>
           <div>
-            <div class="location-name">${loc}</div>
+            <div class="location-name">${loc} <span class="my-party-badge">참여중</span></div>
             ${party.party_name ? `<div class="party-name">${party.party_name}</div>` : ''}
           </div>
         </div>
@@ -1254,6 +1235,24 @@ async function copyBlankTemplate(btn) {
     btn.textContent = '📝 기본양식 복사';
     btn.classList.remove('copied');
   }, 2000);
+}
+
+// ── My party search ──
+function searchMyParty() {
+  const input = document.getElementById('myNameInput');
+  const name = input.value.trim();
+  if (!name) return;
+  mySearchName = name;
+  localStorage.setItem('myCharName', name);
+  document.getElementById('mySearchClear').classList.add('show');
+  renderParties();
+}
+
+function clearMySearch() {
+  mySearchName = '';
+  document.getElementById('myNameInput').value = '';
+  document.getElementById('mySearchClear').classList.remove('show');
+  renderParties();
 }
 
 // ── Copy party template ──
@@ -1353,9 +1352,20 @@ loadParties();
 checkServerStatus();
 startRefreshTimer();
 
-// Enter key on server input
+// Restore saved character name
+const savedName = localStorage.getItem('myCharName');
+if (savedName) {
+  document.getElementById('myNameInput').value = savedName;
+  mySearchName = savedName;
+  document.getElementById('mySearchClear').classList.add('show');
+}
+
+// Enter key handlers
 document.getElementById('serverUrl').addEventListener('keydown', e => {
   if (e.key === 'Enter') connectServer();
+});
+document.getElementById('myNameInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') searchMyParty();
 });
 </script>
 </body>

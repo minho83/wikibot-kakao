@@ -331,7 +331,7 @@ class PartyService {
     const jobMap = {
       '전사': 'warrior', '데빌': 'warrior',
       '도적': 'rogue',
-      '법사': 'mage', '딜법': 'mage', '아나테마': 'mage', '인식': 'mage', '세손': 'mage', '세손법': 'mage',
+      '법사': 'mage', '딜법': 'mage', '아나테마': 'mage', '인식': 'mage', '세손': 'mage', '세손법': 'mage', '저주': 'mage',
       '직자': 'cleric',
       '도가': 'taoist', '무도가': 'taoist'
     };
@@ -434,7 +434,7 @@ class PartyService {
       }
 
       // 요구사항 파싱 (#데빌체580↑8강↑)
-      const reqMatch = line.match(/#(데빌|도적|도가|직자|법사)\s*[:：]?\s*([^\n#]+)/);
+      const reqMatch = line.match(/#(데빌|전사|도적|도가|직자|법사|딜법|아나테마|인식|세손|세손법|저주|무도가)\s*[:：]?\s*([^\n#]+)/);
       if (reqMatch) {
         requirements[reqMatch[1]] = reqMatch[2].trim();
       }
@@ -477,11 +477,15 @@ class PartyService {
         continue;
       }
 
-      // 직업 슬롯 파싱
+      // 직업 슬롯 파싱 (같은 직업 하위 카테고리는 합침)
       if (currentTimeSlot) {
         const parsed = this.parseJobSlots(line);
-        if (parsed && currentSlots[parsed.job]) {
-          currentSlots[parsed.job] = parsed.slots;
+        if (parsed && currentSlots[parsed.job] !== undefined) {
+          if (currentSlots[parsed.job].length > 0) {
+            currentSlots[parsed.job] = currentSlots[parsed.job].concat(parsed.slots);
+          } else {
+            currentSlots[parsed.job] = parsed.slots;
+          }
         }
       }
     }
@@ -534,11 +538,14 @@ class PartyService {
 
       // 1단계: organizer 기준으로 기존 파티 검색
       let matchId = null;
+      const roomId = party.room_id || null;
+      const roomClause = roomId ? 'AND room_id = ?' : 'AND (room_id IS NULL OR room_id = ? OR room_id = \'undefined\')';
+      const roomParam = roomId || '';
       const byOrganizer = this.db.exec(
         `SELECT id FROM party_posts
-         WHERE party_date = ? AND time_slot = ? AND organizer = ? AND room_id = ?
+         WHERE party_date = ? AND time_slot = ? AND organizer = ? ${roomClause}
          ORDER BY updated_at DESC LIMIT 1`,
-        [party.party_date, party.time_slot, party.organizer, party.room_id]
+        [party.party_date, party.time_slot, party.organizer, roomParam]
       );
       if (byOrganizer.length > 0 && byOrganizer[0].values.length > 0) {
         matchId = byOrganizer[0].values[0][0];
@@ -578,7 +585,7 @@ class PartyService {
             party.warrior_slots, party.rogue_slots, party.mage_slots,
             party.cleric_slots, party.taoist_slots,
             party.requirements, party.is_complete, party.raw_message,
-            party.organizer, party.sender_name, party.room_id
+            party.organizer, party.sender_name, party.room_id || null
           ]
         );
       }
@@ -596,11 +603,14 @@ class PartyService {
    * @returns {number|null} - 매칭된 party_posts.id
    */
   _findByMemberOverlap(party) {
+    const roomId = party.room_id || null;
+    const roomClause = roomId ? 'AND room_id = ?' : 'AND (room_id IS NULL OR room_id = ? OR room_id = \'undefined\')';
+    const roomParam = roomId || '';
     const candidates = this.db.exec(
       `SELECT id, warrior_slots, rogue_slots, mage_slots, cleric_slots, taoist_slots
        FROM party_posts
-       WHERE party_date = ? AND time_slot = ? AND room_id = ?`,
-      [party.party_date, party.time_slot, party.room_id]
+       WHERE party_date = ? AND time_slot = ? ${roomClause}`,
+      [party.party_date, party.time_slot, roomParam]
     );
 
     if (!candidates.length || !candidates[0].values.length) return null;
@@ -653,7 +663,7 @@ class PartyService {
       /\d{1,2}[\/\.월]\d{1,2}/,  // 날짜 패턴
       /\d{1,2}[:시]\d{0,2}\s*[~\-]/,  // 시간 패턴
       /\[[^\]]*\]/,  // 슬롯 패턴
-      /전사|도적|법사|직자|도가|데빌/,  // 직업명
+      /전사|도적|법사|직자|도가|데빌|딜법|저주|세손|아나테마|무도가/,  // 직업명
       /#나겔|겜블|사냥팟|파티/  // 장소/이름
     ];
 
