@@ -47,7 +47,21 @@
       "Bash(git -C \"D:/AutoTool/wikibot-kakao\" diff src/services/partyService.js)",
       "Bash(docker ps:*)",
       "Bash(npx jest:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(ls:*)",
+      "Bash(head:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "WebFetch(domain:minho83.github.io)",
+      "WebFetch(domain:lod-wiki.notion.site)",
+      "mcp__puppeteer__puppeteer_navigate",
+      "mcp__puppeteer__puppeteer_evaluate",
+      "mcp__puppeteer__puppeteer_screenshot",
+      "Bash(python3:*)",
+      "mcp__puppeteer__puppeteer_click",
+      "mcp__puppeteer__puppeteer_fill",
+      "Bash(tasklist:*)",
+      "mcp__github__create_repository"
     ],
     "deny": []
   }
