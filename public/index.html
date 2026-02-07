@@ -402,6 +402,74 @@
     50% { opacity: 0.5; }
   }
 
+  /* Copy button */
+  .copy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(108,114,203,0.15);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .copy-btn:hover {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .copy-btn.copied {
+    background: var(--complete);
+    border-color: var(--complete);
+    color: #fff;
+  }
+
+  .card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  .copy-hint {
+    font-size: 11px;
+    color: var(--text-dim);
+    opacity: 0.6;
+  }
+
+  /* Blank template button */
+  .template-btn {
+    background: rgba(108,114,203,0.15);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .template-btn:hover {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .template-btn.copied {
+    background: var(--complete);
+    border-color: var(--complete);
+    color: #fff;
+  }
+
   /* Requirements */
   .requirements {
     margin-top: 12px;
@@ -673,6 +741,7 @@
         <input type="checkbox" id="includeComplete" onchange="loadParties()">
         <span>완비 포함</span>
       </label>
+      <button class="template-btn" onclick="copyBlankTemplate(this)">📝 기본양식 복사</button>
       <div class="refresh-bar">
         <div class="refresh-dot"></div>
         <span id="refreshTimer">30s</span>
@@ -785,6 +854,7 @@ let currentTimeFilter = '';
 let refreshInterval = null;
 let refreshCountdown = 30;
 let allParties = [];
+let partyDataMap = {};
 
 // Initialize to Korean time
 (function initKoreanDate() {
@@ -985,6 +1055,7 @@ function renderStats(data) {
 }
 
 function renderParties() {
+  partyDataMap = {};
   const container = document.getElementById('content');
   let filtered = allParties;
 
@@ -1094,6 +1165,9 @@ function renderPartyCard(party) {
     reqHtml += '</div>';
   }
 
+  const cardId = `party-${party.id || Math.random().toString(36).slice(2)}`;
+  partyDataMap[cardId] = party;
+
   return `
     <div class="party-card${isComplete ? ' complete' : ''}">
       <div class="card-top">
@@ -1112,6 +1186,10 @@ function renderPartyCard(party) {
       ${vacancyTags ? `<div class="vacancy-summary">${vacancyTags}</div>` : ''}
       <div class="slot-rows">${slotRows}</div>
       ${reqHtml}
+      <div class="card-actions">
+        <button class="copy-btn" onclick="copyPartyTemplate(this, '${cardId}')">📋 구인글 복사</button>
+        <span class="copy-hint">카카오톡에 붙여넣기 하세요</span>
+      </div>
     </div>
   `;
 }
@@ -1125,6 +1203,135 @@ function formatTimeAgo(dateStr) {
   if (diff < 3600) return `${Math.floor(diff / 60)}분 전`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}시간 전`;
   return `${Math.floor(diff / 86400)}일 전`;
+}
+
+// ── Blank template copy ──
+let blankTemplateText = '';
+
+async function loadBlankTemplate() {
+  try {
+    const url = SERVER_URL ? apiUrl('/party-template.txt') : '/party-template.txt';
+    const resp = await fetch(url);
+    if (resp.ok) blankTemplateText = await resp.text();
+  } catch {}
+  if (!blankTemplateText) {
+    blankTemplateText = [
+      '★장소 파티명★',
+      '#데빌 조건입력',
+      '#도적 조건입력',
+      '#도가 조건입력',
+      '#법사 조건입력',
+      '#직자 조건입력',
+      '',
+      '날짜(요일) #00:00~00:00 (장소)',
+      '전사 : [][]',
+      '도적 : [][]',
+      '도가 : [][]',
+      '법사 : [][]',
+      '직자 : [][][]',
+      '',
+      '@아이디'
+    ].join('\n');
+  }
+}
+
+async function copyBlankTemplate(btn) {
+  if (!blankTemplateText) await loadBlankTemplate();
+  try {
+    await navigator.clipboard.writeText(blankTemplateText);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = blankTemplateText;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+  btn.textContent = '✅ 복사됨!';
+  btn.classList.add('copied');
+  setTimeout(() => {
+    btn.textContent = '📝 기본양식 복사';
+    btn.classList.remove('copied');
+  }, 2000);
+}
+
+// ── Copy party template ──
+// 파티 데이터에서 직접 구인글 생성 (실제 스펙/조건 포함)
+function generatePartyTemplate(party) {
+  const loc = party.location || '';
+  const time = party.time_slot || '';
+
+  // 날짜: 2/7(금)
+  const d = currentDate;
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+  const dateStr = `${month}/${day}(${dayNames[d.getDay()]})`;
+
+  const lines = [];
+
+  // ★ 타이틀 ★
+  const titleParts = [loc, party.party_name].filter(Boolean).join(' ');
+  if (titleParts) lines.push(`★${titleParts}★`);
+
+  // # 스펙 조건 (파티 데이터에서 가져옴)
+  const reqs = party.requirements || {};
+  if (typeof reqs === 'object' && Object.keys(reqs).length > 0) {
+    Object.entries(reqs).forEach(([job, req]) => {
+      lines.push(`#${job} ${req}`);
+    });
+  }
+
+  // 빈 줄 + 날짜/시간
+  if (lines.length > 0) lines.push('');
+  const timePart = time ? ` #${time}` : '';
+  const locPart = loc ? ` (${loc})` : '';
+  lines.push(`${dateStr}${timePart}${locPart}`);
+
+  // 직업 슬롯: 전사 : [닉네임][닉네임][]
+  const jobs = ['warrior', 'rogue', 'mage', 'cleric', 'taoist'];
+  jobs.forEach(job => {
+    const slots = party[`${job}_slots`] || [];
+    if (slots.length === 0) return;
+    const jobKr = JOB_INFO[job].kr;
+    const slotStr = slots.map(s => s === '' ? '[]' : `[${s}]`).join('');
+    lines.push(`${jobKr} : ${slotStr}`);
+  });
+
+  // @파티장
+  const organizer = party.organizer || (party.sender_name ? party.sender_name.split('/')[0] : '');
+  lines.push('');
+  lines.push(`@${organizer || '아이디'}`);
+
+  return lines.join('\n');
+}
+
+async function copyPartyTemplate(btn, cardId) {
+  const party = partyDataMap[cardId];
+  if (!party) return;
+
+  const text = generatePartyTemplate(party);
+
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // Fallback for older browsers
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+
+  btn.textContent = '✅ 복사됨!';
+  btn.classList.add('copied');
+  setTimeout(() => {
+    btn.textContent = '📋 구인글 복사';
+    btn.classList.remove('copied');
+  }, 2000);
 }
 
 // Auto refresh
