@@ -828,6 +828,42 @@ app.post('/api/party/cleanup', async (req, res) => {
   }
 });
 
+// 기존 파티 requirements 재파싱 (1회용 마이그레이션)
+app.post('/api/party/reparse-requirements', async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const result = partyService.db.exec(
+      `SELECT id, time_slot, raw_message, sender_name, requirements
+       FROM party_posts WHERE raw_message IS NOT NULL AND raw_message != ''`
+    );
+    if (!result.length || !result[0].values.length) {
+      return res.json({ success: true, message: 'No records', updated: 0 });
+    }
+    const rows = result[0].values;
+    let updated = 0, skipped = 0;
+    for (const row of rows) {
+      const [id, timeSlot, rawMsg, senderName, oldReq] = row;
+      try {
+        const parsed = partyService.parseMessage(rawMsg, { name: senderName || '' });
+        const match = parsed.find(p => p.time_slot === timeSlot);
+        if (!match) { skipped++; continue; }
+        const newReq = JSON.parse(match.requirements);
+        if (!newReq._notes || newReq._notes.length === 0) { skipped++; continue; }
+        const merged = {};
+        try { const ex = JSON.parse(oldReq); for (const k in ex) { if (k !== '_notes') merged[k] = ex[k]; } } catch(e) {}
+        for (const k in newReq) { merged[k] = newReq[k]; }
+        partyService.db.run('UPDATE party_posts SET requirements = ? WHERE id = ?',
+          [JSON.stringify(merged), id]);
+        updated++;
+      } catch(e) { skipped++; }
+    }
+    partyService.saveDb();
+    res.json({ success: true, total: rows.length, updated, skipped });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // ── 파티 관리 API (admin) ──────────────────────────────
 
 // 관리자용 파티 목록 (시간 필터 없이 전체)
