@@ -397,17 +397,30 @@ class PartyService {
       isComplete = true;
     }
 
-    // 첫 몇 줄에서 날짜, 장소, 팟 이름 파싱
-    for (let i = 0; i < Math.min(lines.length, 10); i++) {
-      const line = lines[i];
+    // 헤더 영역 파싱: 날짜 줄 ~ 첫 타임슬롯 줄 이전
+    let dateLineIdx = -1;
+    let firstTimeSlotIdx = -1;
+    const headerNotes = [];
 
-      // 날짜 파싱
-      if (!partyDate) {
-        const parsed = this.parseDate(line, this._getKoreanDate());
+    // 1단계: 날짜 줄과 첫 타임슬롯 줄 위치 찾기
+    for (let i = 0; i < lines.length; i++) {
+      if (dateLineIdx < 0) {
+        const parsed = this.parseDate(lines[i], this._getKoreanDate());
         if (parsed) {
           partyDate = parsed;
+          dateLineIdx = i;
         }
       }
+      if (firstTimeSlotIdx < 0 && this.parseTimeSlot(lines[i])) {
+        firstTimeSlotIdx = i;
+        break;
+      }
+    }
+
+    // 2단계: 헤더 영역(날짜 줄 포함 ~ 첫 타임슬롯 줄 이전)에서 메타데이터 추출
+    const headerEnd = firstTimeSlotIdx > 0 ? firstTimeSlotIdx : Math.min(lines.length, 10);
+    for (let i = 0; i < headerEnd; i++) {
+      const line = lines[i];
 
       // 장소 파싱 - includes 방식으로 키워드 매칭
       // 나겔목/나겔반은 장비(목걸이/반지)이므로 제외
@@ -438,6 +451,19 @@ class PartyService {
       if (reqMatch) {
         requirements[reqMatch[1]] = reqMatch[2].trim();
       }
+
+      // 자유형 조건 텍스트 수집 (날짜 줄 다음부터, 첫 타임슬롯 이전)
+      if (i > dateLineIdx && dateLineIdx >= 0) {
+        // 날짜 줄, 주최자(@) 줄, #직업 태그 줄, 빈 줄 제외
+        if (line && !line.startsWith('@') && !reqMatch && !this.parseTimeSlot(line)) {
+          headerNotes.push(line);
+        }
+      }
+    }
+
+    // _notes를 requirements에 추가
+    if (headerNotes.length > 0) {
+      requirements['_notes'] = headerNotes;
     }
 
     // 타임슬롯별로 파티 파싱
