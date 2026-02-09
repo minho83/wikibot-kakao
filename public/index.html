@@ -236,7 +236,7 @@
   }
 
   .party-card.complete {
-    opacity: 0.5;
+    opacity: 0.55;
   }
 
   .party-card.complete::after {
@@ -245,6 +245,24 @@
     top: 12px;
     right: -28px;
     background: var(--complete);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 32px;
+    transform: rotate(45deg);
+    letter-spacing: 1px;
+  }
+
+  .party-card.full-party {
+    opacity: 0.65;
+  }
+
+  .party-card.full-party::after {
+    content: '\uB9CC\uC11D';
+    position: absolute;
+    top: 12px;
+    right: -28px;
+    background: var(--text-dim);
     color: #fff;
     font-size: 10px;
     font-weight: 700;
@@ -632,6 +650,62 @@
     height: 14px;
   }
 
+  .view-tabs {
+    display: flex;
+    gap: 2px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2px;
+  }
+
+  .view-tab {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .view-tab:hover { color: var(--text); }
+
+  .view-tab.active {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .copy-raw-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .copy-raw-btn:hover {
+    background: rgba(255,255,255,0.1);
+    color: var(--text);
+  }
+
+  .copy-raw-btn.copied {
+    background: var(--complete);
+    border-color: var(--complete);
+    color: #fff;
+  }
+
   /* Server config bar */
   .server-bar {
     background: var(--card);
@@ -733,6 +807,9 @@
     .my-search { flex: 1; min-width: 0; }
     .my-search input { flex: 1; min-width: 0; width: auto; }
     .template-btn { font-size: 11px; padding: 4px 8px; }
+
+    /* View tabs compact */
+    .view-tab { font-size: 10px; padding: 3px 8px; }
   }
 </style>
 </head>
@@ -763,10 +840,10 @@
       </div>
     </div>
     <div class="header-actions">
-      <label class="include-complete-wrap">
-        <input type="checkbox" id="includeComplete" onchange="loadParties()">
-        <span>완비</span>
-      </label>
+      <div class="view-tabs">
+        <button class="view-tab active" data-view="vacancy" onclick="setViewMode('vacancy')">빈자리</button>
+        <button class="view-tab" data-view="all" onclick="setViewMode('all')">전체</button>
+      </div>
       <div class="refresh-bar">
         <div class="refresh-dot"></div>
         <span id="refreshTimer">30s</span>
@@ -874,6 +951,7 @@ let refreshCountdown = 30;
 let allParties = [];
 let partyDataMap = {};
 let mySearchName = '';
+let viewMode = 'vacancy'; // 'vacancy' or 'all'
 
 // Initialize to Korean time
 (function initKoreanDate() {
@@ -911,6 +989,14 @@ function updateDateDisplay() {
   document.getElementById('dateDisplay').textContent = formatDisplayDate(currentDate);
 }
 
+function setViewMode(mode) {
+  viewMode = mode;
+  document.querySelectorAll('.view-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.view === mode);
+  });
+  loadParties();
+}
+
 function setFilter(job) {
   currentFilter = job;
   renderParties();
@@ -924,11 +1010,12 @@ function setTimeFilter(time) {
 
 function buildJobChips() {
   const select = document.getElementById('jobFilter');
-  const totalVacant = allParties.filter(p => (p.vacancies?.total || 0) > 0).length;
-  let html = `<option value="">전체 (${totalVacant})</option>`;
+  const totalParties = allParties.length;
+  const vacantParties = allParties.filter(p => (p.vacancies?.total || 0) > 0).length;
+  let html = `<option value="">전체 ${totalParties}개 (모집중 ${vacantParties})</option>`;
   Object.entries(JOB_INFO).forEach(([key, info]) => {
     const count = allParties.reduce((sum, p) => sum + (p.vacancies?.[key] || 0), 0);
-    const countStr = count > 0 ? ` (${count})` : '';
+    const countStr = count > 0 ? ` (${count}자리)` : '';
     html += `<option value="${key}"${currentFilter === key ? ' selected' : ''}>${info.kr}${countStr}</option>`;
   });
   select.innerHTML = html;
@@ -957,7 +1044,7 @@ async function loadParties(isRetry = false) {
   refreshCountdown = 30;
 
   const dateStr = formatDate(currentDate);
-  const includeComplete = document.getElementById('includeComplete').checked;
+  const showAll = viewMode === 'all' || !!mySearchName;
 
   // 첫 로드가 아니면 기존 데이터 유지 (빈 화면 방지)
   const isFirstLoad = allParties.length === 0 && !isRetry;
@@ -967,10 +1054,13 @@ async function loadParties(isRetry = false) {
   }
 
   try {
-    const resp = await fetch(apiUrl('/api/party/vacancy?') + new URLSearchParams({
+    const params = {
       date: dateStr,
-      include_complete: includeComplete ? '1' : '0'
-    }), { signal: AbortSignal.timeout(8000) });
+      include_complete: showAll ? '1' : '0',
+      return_all: showAll ? '1' : '0',
+      skip_time: mySearchName ? '1' : '0'
+    };
+    const resp = await fetch(apiUrl('/api/party/vacancy?') + new URLSearchParams(params), { signal: AbortSignal.timeout(8000) });
     const data = await resp.json();
 
     retryCount = 0;
@@ -1038,6 +1128,20 @@ function renderParties() {
     });
   }
 
+  // Sort: vacant first, then full, then complete
+  filtered.sort((a, b) => {
+    const aVacant = (a.vacancies?.total || 0) > 0 ? 0 : 1;
+    const bVacant = (b.vacancies?.total || 0) > 0 ? 0 : 1;
+    const aComplete = a.is_complete ? 1 : 0;
+    const bComplete = b.is_complete ? 1 : 0;
+    // Vacant first, then full (not complete), then complete
+    const aScore = aComplete ? 2 : aVacant;
+    const bScore = bComplete ? 2 : bVacant;
+    if (aScore !== bScore) return aScore - bScore;
+    // Same category: sort by time
+    return (a.time_slot || '').localeCompare(b.time_slot || '');
+  });
+
   if (filtered.length === 0) {
     const filterName = currentFilter ? JOB_INFO[currentFilter].kr : '';
     let emptyMsg = '해당 날짜에 파티 데이터가 없습니다.';
@@ -1070,12 +1174,19 @@ function renderParties() {
   sortedTimes.forEach(time => {
     const parties = groups[time];
     const vacantCount = parties.filter(p => (p.vacancies?.total || 0) > 0).length;
+    const completeCount = parties.filter(p => p.is_complete).length;
+    const fullCount = parties.length - vacantCount - completeCount;
+
+    let countInfo = `${parties.length}개 파티`;
+    if (vacantCount > 0) countInfo += ` &middot; ${vacantCount}개 모집중`;
+    if (fullCount > 0) countInfo += ` &middot; ${fullCount}개 만석`;
+    if (completeCount > 0) countInfo += ` &middot; ${completeCount}개 완비`;
 
     html += `
       <div class="time-group">
         <div class="time-header">
           <span class="time-badge">${time}</span>
-          <span class="time-count">${parties.length}개 파티${vacantCount > 0 ? ` &middot; ${vacantCount}개 빈자리` : ''}</span>
+          <span class="time-count">${countInfo}</span>
         </div>
         <div class="party-grid">
     `;
@@ -1147,18 +1258,28 @@ function renderPartyCard(party) {
   const cardId = `party-${party.id || Math.random().toString(36).slice(2)}`;
   partyDataMap[cardId] = party;
 
+  // 만석 여부 (빈자리 없고 완비도 아닌 경우)
+  const isFull = !isComplete && (vacancies.total || 0) === 0;
+
   // 내 파티 여부 확인
   let isMyParty = false;
   if (mySearchName) {
     const name = mySearchName.toLowerCase();
     isMyParty = jobs.some(job => {
       const slots = party[`${job}_slots`] || [];
-      return slots.some(s => s && s.toLowerCase() === name);
+      return slots.some(s => s && s.toLowerCase().includes(name));
     });
   }
 
+  const cardClasses = ['party-card'];
+  if (isComplete) cardClasses.push('complete');
+  else if (isFull) cardClasses.push('full-party');
+  if (isMyParty) cardClasses.push('my-party');
+
+  const hasRawMessage = party.raw_message && party.raw_message.trim();
+
   return `
-    <div class="party-card${isComplete ? ' complete' : ''}${isMyParty ? ' my-party' : ''}">
+    <div class="${cardClasses.join(' ')}">
       <div class="card-top">
         <div class="card-location">
           <div class="location-icon">${icon}</div>
@@ -1177,7 +1298,7 @@ function renderPartyCard(party) {
       ${reqHtml}
       <div class="card-actions">
         <button class="copy-btn" onclick="copyPartyTemplate(this, '${cardId}')">📋 구인글 복사</button>
-        <span class="copy-hint">카카오톡에 붙여넣기 하세요</span>
+        ${hasRawMessage ? `<button class="copy-raw-btn" onclick="copyRawMessage(this, '${cardId}')">📄 원문 복사</button>` : ''}
       </div>
     </div>
   `;
@@ -1253,14 +1374,15 @@ function searchMyParty() {
   mySearchName = name;
   localStorage.setItem('myCharName', name);
   document.getElementById('mySearchClear').classList.add('show');
-  renderParties();
+  // Search requires all parties (include complete + skip time filter)
+  loadParties();
 }
 
 function clearMySearch() {
   mySearchName = '';
   document.getElementById('myNameInput').value = '';
   document.getElementById('mySearchClear').classList.remove('show');
-  renderParties();
+  loadParties();
 }
 
 // ── Copy party template ──
@@ -1341,6 +1463,31 @@ async function copyPartyTemplate(btn, cardId) {
   }, 2000);
 }
 
+// ── Copy raw message ──
+async function copyRawMessage(btn, cardId) {
+  const party = partyDataMap[cardId];
+  if (!party || !party.raw_message) return;
+
+  try {
+    await navigator.clipboard.writeText(party.raw_message);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = party.raw_message;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+
+  btn.textContent = '✅ 복사됨!';
+  btn.classList.add('copied');
+  setTimeout(() => {
+    btn.textContent = '📄 원문 복사';
+    btn.classList.remove('copied');
+  }, 2000);
+}
+
 // Auto refresh
 function startRefreshTimer() {
   if (refreshInterval) clearInterval(refreshInterval);
@@ -1356,17 +1503,17 @@ function startRefreshTimer() {
 // Init
 initServerUrl();
 updateDateDisplay();
-loadParties();
 checkServerStatus();
 startRefreshTimer();
 
-// Restore saved character name
+// Restore saved character name (before first load)
 const savedName = localStorage.getItem('myCharName');
 if (savedName) {
   document.getElementById('myNameInput').value = savedName;
-  mySearchName = savedName;
-  document.getElementById('mySearchClear').classList.add('show');
 }
+
+// First load
+loadParties();
 
 // Enter key handlers
 document.getElementById('serverUrl').addEventListener('keydown', e => {

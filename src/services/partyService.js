@@ -717,7 +717,9 @@ class PartyService {
       date,
       job,
       includeComplete = false,
-      afterTime = null
+      afterTime = null,
+      returnAll = false,
+      skipTimeFilter = false
     } = options;
 
     // 날짜 파싱
@@ -741,7 +743,7 @@ class PartyService {
     let sql = `
       SELECT id, party_date, time_slot, location, party_name,
              warrior_slots, rogue_slots, mage_slots, cleric_slots, taoist_slots,
-             requirements, is_complete, organizer, sender_name, updated_at
+             requirements, is_complete, organizer, sender_name, updated_at, raw_message
       FROM party_posts
       WHERE party_date = ?
     `;
@@ -751,9 +753,9 @@ class PartyService {
       sql += ` AND is_complete = 0`;
     }
 
-    // 현재 시간 이후만 (오늘인 경우)
+    // 현재 시간 이후만 (오늘인 경우, skipTimeFilter가 아닐 때)
     const todayStr = this._formatDate(koreanNow);
-    if (targetDate === todayStr) {
+    if (!skipTimeFilter && targetDate === todayStr) {
       const currentTime = `${String(koreanNow.getHours()).padStart(2, '0')}:${String(koreanNow.getMinutes()).padStart(2, '0')}`;
       sql += ` AND substr(time_slot, 1, 5) >= ?`;
       params.push(currentTime);
@@ -784,8 +786,17 @@ class PartyService {
       is_complete: row[11],
       organizer: row[12],
       sender_name: row[13],
-      updated_at: row[14]
+      updated_at: row[14],
+      raw_message: row[15] || ''
     }));
+
+    // returnAll이면 전체 반환 (빈자리 없는 파티 포함)
+    if (returnAll) {
+      const answer = parties.length > 0
+        ? this._formatPartyList(targetDate, parties.filter(p => this._countEmptySlots(p, job).total > 0), job)
+        : `${this._formatDisplayDate(targetDate)} 파티가 없습니다.`;
+      return { answer, parties };
+    }
 
     // 빈자리 있는 파티만 필터
     const partiesWithSlots = parties.filter(p => {

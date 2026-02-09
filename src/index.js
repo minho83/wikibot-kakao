@@ -692,13 +692,17 @@ app.get('/api/trade/rooms', async (req, res) => {
 app.get('/api/party/vacancy', async (req, res) => {
   try {
     if (!initialized) await initializeService();
-    const { date, job, include_complete } = req.query;
+    const { date, job, include_complete, return_all, skip_time } = req.query;
     const includeComplete = include_complete === '1';
+    const returnAll = return_all === '1';
+    const skipTimeFilter = skip_time === '1';
 
     const result = partyService.queryParties({
       date: date || '오늘',
       job: job || null,
-      includeComplete
+      includeComplete,
+      returnAll,
+      skipTimeFilter
     });
 
     // 빈자리 정보를 포함한 파티 목록 반환
