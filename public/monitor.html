@@ -65,6 +65,21 @@
   .refresh-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); animation: blink 2s ease-in-out infinite; }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
+  /* Tabs */
+  .tab-bar {
+    max-width: 1400px; margin: 0 auto; padding: 16px 24px 0;
+    display: flex; gap: 4px; border-bottom: 1px solid var(--border);
+  }
+  .tab-btn {
+    background: none; border: none; color: var(--text-dim); font-size: 14px; font-weight: 600;
+    padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
   .main { max-width: 1400px; margin: 0 auto; padding: 20px 24px; }
 
   /* Stats */
@@ -86,16 +101,16 @@
   .section-title .badge { background: var(--accent); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; }
 
   /* Party table */
-  .party-table {
+  .party-table, .trade-table {
     width: 100%; border-collapse: collapse; background: var(--card);
     border: 1px solid var(--border); border-radius: 10px; overflow: hidden; font-size: 13px;
   }
-  .party-table th {
+  .party-table th, .trade-table th {
     background: rgba(108,114,203,0.1); padding: 10px 8px; text-align: left;
     font-weight: 600; color: var(--text-dim); font-size: 11px; white-space: nowrap;
   }
-  .party-table td { padding: 8px; border-top: 1px solid var(--border); }
-  .party-table tr:hover td { background: var(--card-hover); }
+  .party-table td, .trade-table td { padding: 8px; border-top: 1px solid var(--border); }
+  .party-table tr:hover td, .trade-table tr:hover td { background: var(--card-hover); }
 
   .slot-cell { display: flex; flex-wrap: wrap; gap: 2px; }
   .slot-tag {
@@ -139,10 +154,40 @@
   .db-table td { padding: 8px 12px; border-top: 1px solid var(--border); }
 
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+  /* Trade tab styles */
+  .trend-up { color: var(--danger); font-weight: 600; }
+  .trend-down { color: var(--mage); font-weight: 600; }
+  .trend-flat { color: var(--text-dim); }
+
+  .sell-badge { background: rgba(52,152,219,0.2); color: var(--mage); padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+  .buy-badge { background: rgba(230,126,34,0.2); color: var(--warning); padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+
+  .enh-badge { background: rgba(108,114,203,0.15); color: var(--accent); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+
+  .unit-text { color: var(--text-dim); font-size: 11px; margin-left: 2px; }
+
+  /* Volume chart */
+  .volume-chart { display: flex; align-items: flex-end; gap: 4px; height: 120px; padding: 10px 0; }
+  .volume-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; }
+  .volume-bar {
+    width: 100%; border-radius: 4px 4px 0 0; min-height: 2px;
+    background: linear-gradient(180deg, var(--accent), rgba(108,114,203,0.4));
+    transition: height 0.3s;
+    position: relative;
+    margin-top: auto;
+  }
+  .volume-bar:hover { opacity: 0.8; }
+  .volume-bar-label { font-size: 9px; color: var(--text-dim); white-space: nowrap; }
+  .volume-bar-count { font-size: 9px; color: var(--accent); font-weight: 600; }
+
+  .price-value { font-weight: 600; }
+
   @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
   @media (max-width: 768px) {
     .header { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
     .main { padding: 12px 16px; }
+    .tab-bar { padding: 12px 16px 0; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
   }
 </style>
@@ -168,86 +213,144 @@
   </div>
 </div>
 
+<!-- Tabs -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('party')">파티</button>
+  <button class="tab-btn" onclick="switchTab('trade')">시세</button>
+</div>
+
 <div class="main">
-  <!-- Stats -->
-  <div class="stats-grid">
-    <div class="stat-card">
-      <div class="stat-label">업타임</div>
-      <div class="stat-value" id="uptime">-</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">메모리</div>
-      <div class="stat-value" id="memory">-</div>
-      <div class="stat-sub" id="memorySub"></div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">오늘 파티</div>
-      <div class="stat-value" id="todayParties">-</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">전체 파티</div>
-      <div class="stat-value" id="totalParties">-</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">거래 레코드</div>
-      <div class="stat-value" id="tradeRecords">-</div>
-    </div>
-  </div>
-
-  <!-- Recent Parties (main section) -->
-  <div class="section">
-    <div class="section-title">최근 수집/업데이트된 파티 <span class="badge" id="recentCount">0</span></div>
-    <div style="overflow-x:auto; border:1px solid var(--border); border-radius:10px;">
-      <table class="party-table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>파티 날짜</th>
-            <th>시간대</th>
-            <th>장소</th>
-            <th>주최</th>
-            <th>전사</th>
-            <th>도적</th>
-            <th>법사</th>
-            <th>직자</th>
-            <th>도가</th>
-            <th>상태</th>
-            <th>등록</th>
-            <th>수정</th>
-          </tr>
-        </thead>
-        <tbody id="recentBody">
-          <tr><td colspan="13" class="empty-msg">로딩 중...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="two-col">
-    <!-- Activity Log -->
-    <div class="section">
-      <div class="section-title">실시간 수집 로그 <span class="badge" id="activityCount">0</span></div>
-      <div class="activity-log" id="activityLog">
-        <div class="empty-msg">서버 시작 후 수집된 활동이 여기에 표시됩니다.</div>
+  <!-- ═══ 파티 탭 ═══ -->
+  <div class="tab-content active" id="tab-party">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">업타임</div>
+        <div class="stat-value" id="uptime">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">메모리</div>
+        <div class="stat-value" id="memory">-</div>
+        <div class="stat-sub" id="memorySub"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">오늘 파티</div>
+        <div class="stat-value" id="todayParties">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">전체 파티</div>
+        <div class="stat-value" id="totalParties">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">거래 레코드</div>
+        <div class="stat-value" id="tradeRecords">-</div>
       </div>
     </div>
 
-    <div>
-      <!-- Rooms -->
+    <div class="section">
+      <div class="section-title">최근 수집/업데이트된 파티 <span class="badge" id="recentCount">0</span></div>
+      <div style="overflow-x:auto; border:1px solid var(--border); border-radius:10px;">
+        <table class="party-table">
+          <thead>
+            <tr>
+              <th>ID</th><th>파티 날짜</th><th>시간대</th><th>장소</th><th>주최</th>
+              <th>전사</th><th>도적</th><th>법사</th><th>직자</th><th>도가</th>
+              <th>상태</th><th>등록</th><th>수정</th>
+            </tr>
+          </thead>
+          <tbody id="recentBody">
+            <tr><td colspan="13" class="empty-msg">로딩 중...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="two-col">
       <div class="section">
-        <div class="section-title">수집방 <span class="badge" id="roomCount">0</span></div>
-        <div class="room-list" id="roomList">
-          <span style="color:var(--text-dim)">로딩 중...</span>
+        <div class="section-title">실시간 수집 로그 <span class="badge" id="activityCount">0</span></div>
+        <div class="activity-log" id="activityLog">
+          <div class="empty-msg">서버 시작 후 수집된 활동이 여기에 표시됩니다.</div>
         </div>
       </div>
+      <div>
+        <div class="section">
+          <div class="section-title">수집방 <span class="badge" id="roomCount">0</span></div>
+          <div class="room-list" id="roomList">
+            <span style="color:var(--text-dim)">로딩 중...</span>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-title">DB 상태</div>
+          <table class="db-table">
+            <thead><tr><th>파일</th><th>크기</th><th>레코드</th></tr></thead>
+            <tbody id="dbTableBody">
+              <tr><td colspan="3" class="empty-msg">로딩 중...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
 
-      <!-- DB -->
-      <div class="section">
-        <div class="section-title">DB 상태</div>
-        <table class="db-table">
-          <thead><tr><th>파일</th><th>크기</th><th>레코드</th></tr></thead>
-          <tbody id="dbTableBody">
-            <tr><td colspan="3" class="empty-msg">로딩 중...</td></tr>
+  <!-- ═══ 시세 탭 ═══ -->
+  <div class="tab-content" id="tab-trade">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">총 거래 건수</div>
+        <div class="stat-value" id="tradeTotalCount">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">고유 아이템</div>
+        <div class="stat-value" id="tradeItemCount">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">거래 기간</div>
+        <div class="stat-value" id="tradeDateRange" style="font-size:16px;">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">등록 별칭</div>
+        <div class="stat-value" id="tradeAliasCount">-</div>
+      </div>
+    </div>
+
+    <!-- 일별 거래량 -->
+    <div class="section">
+      <div class="section-title">일별 거래량 (최근 14일)</div>
+      <div style="background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px;">
+        <div class="volume-chart" id="volumeChart">
+          <div class="empty-msg" style="width:100%">로딩 중...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 인기 아이템 시세 -->
+    <div class="section">
+      <div class="section-title">인기 아이템 시세 (7일) <span class="badge" id="overviewCount">0</span></div>
+      <div style="overflow-x:auto; border:1px solid var(--border); border-radius:10px;">
+        <table class="trade-table">
+          <thead>
+            <tr>
+              <th>#</th><th>아이템</th><th>거래수</th><th>평균가</th><th>범위</th><th>변동률</th>
+            </tr>
+          </thead>
+          <tbody id="overviewBody">
+            <tr><td colspan="6" class="empty-msg">로딩 중...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 최근 거래 내역 -->
+    <div class="section">
+      <div class="section-title">최근 거래 내역 <span class="badge" id="recentTradeCount">0</span></div>
+      <div style="overflow-x:auto; border:1px solid var(--border); border-radius:10px;">
+        <table class="trade-table">
+          <thead>
+            <tr>
+              <th>날짜</th><th>타입</th><th>아이템</th><th>강화</th><th>가격</th><th>판매자</th>
+            </tr>
+          </thead>
+          <tbody id="recentTradeBody">
+            <tr><td colspan="6" class="empty-msg">로딩 중...</td></tr>
           </tbody>
         </table>
       </div>
@@ -258,7 +361,9 @@
 <script>
 const JOB_NAMES = { warrior:'전사', rogue:'도적', mage:'법사', cleric:'직자', taoist:'도가' };
 const JOB_KEYS = ['warrior','rogue','mage','cleric','taoist'];
+const UNIT_NAMES = { gj:'금전', won:'만원', eok:'억' };
 let adminToken = localStorage.getItem('adminToken') || '';
+let currentTab = 'party';
 
 // ── Auth ──
 async function checkAuth() {
@@ -292,6 +397,14 @@ async function doLogin() {
 
 function authHeaders() { return { 'Authorization': 'Bearer ' + adminToken }; }
 
+// ── Tab switching ──
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.textContent === (tab === 'party' ? '파티' : '시세')));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + tab));
+  refresh();
+}
+
 // ── Load Status ──
 async function loadStatus() {
   try {
@@ -311,7 +424,6 @@ async function loadStatus() {
     document.getElementById('totalParties').textContent = db['party.db']?.records ?? '-';
     document.getElementById('tradeRecords').textContent = db['trade.db']?.records ?? '-';
 
-    // DB table
     let dbHtml = '';
     for (const [name, info] of Object.entries(db)) {
       const records = info.records ?? info.rooms ?? '-';
@@ -319,7 +431,6 @@ async function loadStatus() {
     }
     document.getElementById('dbTableBody').innerHTML = dbHtml;
 
-    // Rooms
     const allRooms = [...(data.rooms.party||[]), ...(data.rooms.trade||[])];
     document.getElementById('roomCount').textContent = allRooms.length;
     document.getElementById('roomList').innerHTML = allRooms.length === 0
@@ -349,7 +460,7 @@ async function loadRecentParties() {
 
     document.getElementById('recentBody').innerHTML = parties.map(p => {
       const slots = job => renderSlots(p[job+'_slots'], job);
-      const isNew = isRecent(p.updated_at, 10); // 10분 이내
+      const isNew = isRecent(p.updated_at, 10);
       const updClass = isNew ? 'updated-new' : 'updated-old';
 
       return `<tr>
@@ -369,29 +480,6 @@ async function loadRecentParties() {
       </tr>`;
     }).join('');
   } catch(err) { console.error('Recent parties error:', err); }
-}
-
-function renderSlots(slots, job) {
-  if (!slots || slots.length === 0) return '<span class="meta">-</span>';
-  return '<div class="slot-cell">' + slots.map(s =>
-    s === '' ? `<span class="slot-tag empty">\u25CB</span>` : `<span class="slot-tag filled">${esc(s)}</span>`
-  ).join('') + '</div>';
-}
-
-function isRecent(dateStr, minutes) {
-  if (!dateStr) return false;
-  try { return (Date.now() - new Date(dateStr).getTime()) < minutes * 60 * 1000; }
-  catch { return false; }
-}
-
-function fmtDateTime(str) {
-  if (!str) return '-';
-  try {
-    const d = new Date(str);
-    const m = d.getMonth()+1, day = d.getDate();
-    const h = String(d.getHours()).padStart(2,'0'), min = String(d.getMinutes()).padStart(2,'0');
-    return `${m}/${day} ${h}:${min}`;
-  } catch { return str; }
 }
 
 // ── Load Activity ──
@@ -423,6 +511,156 @@ async function loadActivity() {
   } catch(err) { console.error('Activity error:', err); }
 }
 
+// ── Trade: Load Stats ──
+async function loadTradeStats() {
+  try {
+    const resp = await fetch('/api/trade/stats', { headers: authHeaders() });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!data.success) return;
+
+    document.getElementById('tradeTotalCount').textContent = (data.trades || 0).toLocaleString();
+    document.getElementById('tradeItemCount').textContent = data.items || 0;
+    document.getElementById('tradeAliasCount').textContent = data.aliases || 0;
+    const from = data.dateFrom ? data.dateFrom.slice(5) : '?';
+    const to = data.dateTo ? data.dateTo.slice(5) : '?';
+    document.getElementById('tradeDateRange').textContent = `${from} ~ ${to}`;
+  } catch(err) { console.error('Trade stats error:', err); }
+}
+
+// ── Trade: Load Market Overview ──
+async function loadTradeOverview() {
+  try {
+    const resp = await fetch('/api/admin/trade-overview?days=7', { headers: authHeaders() });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!data.success) return;
+
+    const items = data.items || [];
+    document.getElementById('overviewCount').textContent = items.length;
+
+    if (items.length === 0) {
+      document.getElementById('overviewBody').innerHTML = '<tr><td colspan="6" class="empty-msg">거래 데이터가 없습니다.</td></tr>';
+      return;
+    }
+
+    document.getElementById('overviewBody').innerHTML = items.map((item, i) => {
+      const unit = UNIT_NAMES[item.priceUnit] || item.priceUnit;
+      const range = `${fmtPrice(item.minPrice)} ~ ${fmtPrice(item.maxPrice)}`;
+
+      let trendHtml = '<span class="trend-flat">-</span>';
+      if (item.trend) {
+        const ch = item.trend.change;
+        if (ch > 0) trendHtml = `<span class="trend-up">&#x25B2; +${ch}%</span>`;
+        else if (ch < 0) trendHtml = `<span class="trend-down">&#x25BC; ${ch}%</span>`;
+        else trendHtml = `<span class="trend-flat">0%</span>`;
+      }
+
+      return `<tr>
+        <td class="meta">${i+1}</td>
+        <td style="font-weight:600">${esc(item.name)}</td>
+        <td>${item.count}건</td>
+        <td><span class="price-value">${fmtPrice(item.avgPrice)}</span><span class="unit-text">${unit}</span></td>
+        <td class="meta">${range}<span class="unit-text">${unit}</span></td>
+        <td>${trendHtml}</td>
+      </tr>`;
+    }).join('');
+  } catch(err) { console.error('Trade overview error:', err); }
+}
+
+// ── Trade: Load Recent Trades ──
+async function loadRecentTrades() {
+  try {
+    const resp = await fetch('/api/admin/trade-recent?limit=50', { headers: authHeaders() });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!data.success) return;
+
+    const trades = data.trades || [];
+    document.getElementById('recentTradeCount').textContent = trades.length;
+
+    if (trades.length === 0) {
+      document.getElementById('recentTradeBody').innerHTML = '<tr><td colspan="6" class="empty-msg">거래 데이터가 없습니다.</td></tr>';
+      return;
+    }
+
+    document.getElementById('recentTradeBody').innerHTML = trades.map(t => {
+      const typeBadge = t.trade_type === 'sell'
+        ? '<span class="sell-badge">판매</span>'
+        : '<span class="buy-badge">구매</span>';
+      const unit = UNIT_NAMES[t.price_unit] || t.price_unit;
+      const enh = t.enhancement > 0 ? `<span class="enh-badge">${t.enhancement}강</span>` : '';
+      const name = esc(t.canonical_name || t.item_name || '?');
+
+      return `<tr>
+        <td class="date-col">${t.trade_date || '-'}</td>
+        <td>${typeBadge}</td>
+        <td style="font-weight:500">${name}</td>
+        <td>${enh}</td>
+        <td><span class="price-value">${t.price != null ? fmtPrice(t.price) : '-'}</span><span class="unit-text">${unit}</span></td>
+        <td class="meta">${esc(t.seller_name || '-')}</td>
+      </tr>`;
+    }).join('');
+  } catch(err) { console.error('Recent trades error:', err); }
+}
+
+// ── Trade: Load Daily Volume ──
+async function loadDailyVolume() {
+  try {
+    const resp = await fetch('/api/admin/trade-volume?days=14', { headers: authHeaders() });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!data.success) return;
+
+    const volume = data.volume || [];
+    if (volume.length === 0) {
+      document.getElementById('volumeChart').innerHTML = '<div class="empty-msg" style="width:100%">거래 데이터가 없습니다.</div>';
+      return;
+    }
+
+    const maxCount = Math.max(...volume.map(v => v.count), 1);
+
+    document.getElementById('volumeChart').innerHTML = volume.map(v => {
+      const pct = Math.max((v.count / maxCount) * 100, 2);
+      const dateLabel = v.date ? v.date.slice(5) : '?';
+      return `<div class="volume-bar-wrap">
+        <div class="volume-bar-count">${v.count}</div>
+        <div class="volume-bar" style="height:${pct}%" title="${v.date}: ${v.count}건 (판${v.sellCount}/구${v.buyCount})"></div>
+        <div class="volume-bar-label">${dateLabel}</div>
+      </div>`;
+    }).join('');
+  } catch(err) { console.error('Volume error:', err); }
+}
+
+// ── Helpers ──
+function renderSlots(slots, job) {
+  if (!slots || slots.length === 0) return '<span class="meta">-</span>';
+  return '<div class="slot-cell">' + slots.map(s =>
+    s === '' ? `<span class="slot-tag empty">\u25CB</span>` : `<span class="slot-tag filled">${esc(s)}</span>`
+  ).join('') + '</div>';
+}
+
+function isRecent(dateStr, minutes) {
+  if (!dateStr) return false;
+  try { return (Date.now() - new Date(dateStr).getTime()) < minutes * 60 * 1000; }
+  catch { return false; }
+}
+
+function fmtDateTime(str) {
+  if (!str) return '-';
+  try {
+    const d = new Date(str);
+    const m = d.getMonth()+1, day = d.getDate();
+    const h = String(d.getHours()).padStart(2,'0'), min = String(d.getMinutes()).padStart(2,'0');
+    return `${m}/${day} ${h}:${min}`;
+  } catch { return str; }
+}
+
+function fmtPrice(n) {
+  if (n == null) return '-';
+  return Number(n) % 1 === 0 ? Number(n).toLocaleString() : Number(n).toLocaleString(undefined, { maximumFractionDigits: 1 });
+}
+
 function esc(text) {
   const d = document.createElement('div');
   d.textContent = text;
@@ -433,7 +671,11 @@ function esc(text) {
 let refreshCountdown = 10;
 
 async function refresh() {
-  await Promise.all([loadStatus(), loadRecentParties(), loadActivity()]);
+  if (currentTab === 'party') {
+    await Promise.all([loadStatus(), loadRecentParties(), loadActivity()]);
+  } else {
+    await Promise.all([loadTradeStats(), loadTradeOverview(), loadRecentTrades(), loadDailyVolume()]);
+  }
   refreshCountdown = 10;
 }
 

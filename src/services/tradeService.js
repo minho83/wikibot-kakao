@@ -1957,6 +1957,118 @@ class TradeService {
     };
   }
 
+  // ── 시세 모니터링 ──────────────────────────────────────
+
+  /**
+   * 인기 아이템 시세 개요 (거래량 상위)
+   */
+  getMarketOverview(days = 7) {
+    if (!this.initialized) return [];
+    const dateLimit = new Date();
+    dateLimit.setDate(dateLimit.getDate() - days);
+    const dateLimitStr = dateLimit.toISOString().split('T')[0];
+
+    const result = this.db.exec(`
+      SELECT canonical_name, COUNT(*) as cnt,
+        price_unit,
+        AVG(price) as avg_price,
+        MIN(price) as min_price,
+        MAX(price) as max_price
+      FROM trades
+      WHERE trade_date >= ? AND trade_type != 'exchange'
+        AND canonical_name IS NOT NULL AND canonical_name != ''
+      GROUP BY canonical_name, price_unit
+      ORDER BY cnt DESC
+      LIMIT 30
+    `, [dateLimitStr]);
+
+    if (!result.length) return [];
+
+    // 같은 아이템이 다른 price_unit으로 중복될 수 있으므로 아이템당 가장 거래 많은 단위만
+    const seen = new Map();
+    for (const row of result[0].values) {
+      const name = row[0];
+      if (seen.has(name)) continue;
+      seen.set(name, {
+        name,
+        count: row[1],
+        priceUnit: row[2],
+        avgPrice: Math.round(row[3] * 10) / 10,
+        minPrice: Math.round(row[4] * 10) / 10,
+        maxPrice: Math.round(row[5] * 10) / 10,
+        trend: null
+      });
+    }
+
+    // 상위 20개만 trend 계산
+    const items = [...seen.values()].slice(0, 20);
+    for (const item of items) {
+      try {
+        item.trend = this._calcTrend(item.name, 0, days, item.priceUnit);
+      } catch (e) { /* ignore */ }
+    }
+
+    return items;
+  }
+
+  /**
+   * 최근 거래 내역
+   */
+  getRecentTrades(limit = 50) {
+    if (!this.initialized) return [];
+    const result = this.db.exec(`
+      SELECT item_name, canonical_name, enhancement, trade_type,
+        price, price_unit, price_raw, seller_name, trade_date, created_at
+      FROM trades
+      WHERE trade_type != 'exchange'
+      ORDER BY trade_date DESC, id DESC
+      LIMIT ?
+    `, [limit]);
+
+    if (!result.length) return [];
+    return result[0].values.map(row => ({
+      item_name: row[0],
+      canonical_name: row[1],
+      enhancement: row[2],
+      trade_type: row[3],
+      price: row[4],
+      price_unit: row[5],
+      price_raw: row[6],
+      seller_name: row[7],
+      trade_date: row[8],
+      created_at: row[9]
+    }));
+  }
+
+  /**
+   * 일별 거래량 통계
+   */
+  getDailyVolume(days = 14) {
+    if (!this.initialized) return [];
+    const dateLimit = new Date();
+    dateLimit.setDate(dateLimit.getDate() - days);
+    const dateLimitStr = dateLimit.toISOString().split('T')[0];
+
+    const result = this.db.exec(`
+      SELECT trade_date,
+        COUNT(*) as total,
+        SUM(CASE WHEN trade_type = 'sell' THEN 1 ELSE 0 END) as sell_count,
+        SUM(CASE WHEN trade_type = 'buy' THEN 1 ELSE 0 END) as buy_count
+      FROM trades
+      WHERE trade_date >= ? AND trade_type != 'exchange'
+      GROUP BY trade_date
+      ORDER BY trade_date ASC
+    `, [dateLimitStr]);
+
+    if (!result.length) return [];
+    return result[0].values.map(row => ({
+      date: row[0],
+      count: row[1],
+      sellCount: row[2],
+      buyCount: row[3]
+    }));
+  }
+
   // ── DB 관리 ──────────────────────────────────────────
 
   saveDb() {

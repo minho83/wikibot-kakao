@@ -982,6 +982,41 @@ app.get('/api/admin/recent-parties', adminAuth, async (req, res) => {
   }
 });
 
+// ── 시세 모니터링 API (admin) ─────────────────────────
+
+app.get('/api/admin/trade-overview', adminAuth, async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const days = Math.min(parseInt(req.query.days) || 7, 30);
+    const items = tradeService.getMarketOverview(days);
+    res.json({ success: true, items });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.get('/api/admin/trade-recent', adminAuth, async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const trades = tradeService.getRecentTrades(limit);
+    res.json({ success: true, trades });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.get('/api/admin/trade-volume', adminAuth, async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const days = Math.min(parseInt(req.query.days) || 14, 60);
+    const volume = tradeService.getDailyVolume(days);
+    res.json({ success: true, volume });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // ── 파티 관리 API (admin) ──────────────────────────────
 
 // 관리자용 파티 목록 (시간 필터 없이 전체)
