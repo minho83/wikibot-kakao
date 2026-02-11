@@ -1260,7 +1260,6 @@ function renderPartyCard(party) {
   else if (isFull) cardClasses.push('full-party');
   if (isMyParty) cardClasses.push('my-party');
 
-  const hasRawMessage = party.raw_message && party.raw_message.trim();
 
   return `
     <div class="${cardClasses.join(' ')}">
@@ -1281,9 +1280,9 @@ function renderPartyCard(party) {
       ${vacancyTags ? `<div class="vacancy-summary">${vacancyTags}</div>` : ''}
       <div class="slot-rows">${slotRows}</div>
       ${reqHtml}
-      ${hasRawMessage ? `<div class="card-actions">
+      <div class="card-actions">
         <button class="copy-raw-btn" onclick="copyRawMessage(this, '${cardId}')">📄 원문 복사</button>
-      </div>` : ''}
+      </div>
     </div>
   `;
 }
