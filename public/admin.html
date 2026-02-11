@@ -465,6 +465,7 @@
       <h1>파티 DB 관리</h1>
     </div>
     <a href="/" class="back-link">&#x2190; 빈자리 뷰어</a>
+    <a href="/monitor.html" class="back-link">&#x1F4CA; 모니터링</a>
   </div>
   <div class="header-right">
     <div class="date-nav">
@@ -514,12 +515,13 @@
           <th>도가</th>
           <th>상태</th>
           <th>주최</th>
+          <th>등록시각</th>
           <th>수정시각</th>
           <th>작업</th>
         </tr>
       </thead>
       <tbody id="tableBody">
-        <tr><td colspan="13" style="text-align:center; padding:40px; color:var(--text-dim);">불러오는 중...</td></tr>
+        <tr><td colspan="14" style="text-align:center; padding:40px; color:var(--text-dim);">불러오는 중...</td></tr>
       </tbody>
     </table>
   </div>
@@ -607,6 +609,63 @@ const JOB_NAMES = { warrior: '전사', rogue: '도적', mage: '법사', cleric: 
 let allParties = [];
 let currentDate = null; // null = show all
 let editingId = null;
+let adminToken = localStorage.getItem('adminToken') || '';
+
+// ── 인증 ──
+async function checkAuth() {
+  // 토큰 없으면 먼저 verify로 비밀번호 필요 여부 확인
+  if (!adminToken) {
+    try {
+      const resp = await fetch('/api/admin/verify');
+      const data = await resp.json();
+      if (data.success) { adminToken = 'no-auth'; return; }
+    } catch {}
+    return await doLogin();
+  }
+  try {
+    const resp = await fetch('/api/admin/verify', {
+      headers: { 'Authorization': 'Bearer ' + adminToken }
+    });
+    if (!resp.ok) {
+      adminToken = '';
+      localStorage.removeItem('adminToken');
+      return await doLogin();
+    }
+  } catch {
+    return await doLogin();
+  }
+}
+
+async function doLogin() {
+  const pw = prompt('관리자 비밀번호를 입력하세요:');
+  if (!pw) {
+    document.body.innerHTML = '<div style="text-align:center;padding:100px;color:#8b90a0;font-size:16px;">인증이 필요합니다. 새로고침하여 다시 시도하세요.</div>';
+    throw new Error('auth_cancelled');
+  }
+  try {
+    const resp = await fetch('/api/admin/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    });
+    const data = await resp.json();
+    if (data.success && data.token) {
+      adminToken = data.token;
+      localStorage.setItem('adminToken', adminToken);
+    } else {
+      alert(data.message || '인증 실패');
+      return await doLogin();
+    }
+  } catch (e) {
+    if (e.message === 'auth_cancelled') throw e;
+    alert('서버 연결 실패');
+    throw e;
+  }
+}
+
+function authHeaders() {
+  return { 'Authorization': 'Bearer ' + adminToken };
+}
 
 // Init Korean date
 (function() {
@@ -652,7 +711,7 @@ async function loadParties() {
     const params = new URLSearchParams();
     if (currentDate) params.set('date', formatDate(currentDate));
 
-    const resp = await fetch('/api/party/admin/list?' + params);
+    const resp = await fetch('/api/party/admin/list?' + params, { headers: authHeaders() });
     const data = await resp.json();
 
     if (data.success) {
@@ -724,7 +783,7 @@ function renderTable() {
 
   if (filtered.length === 0) {
     document.getElementById('tableBody').innerHTML =
-      '<tr><td colspan="13" style="text-align:center;padding:40px;color:var(--text-dim);">데이터 없음</td></tr>';
+      '<tr><td colspan="14" style="text-align:center;padding:40px;color:var(--text-dim);">데이터 없음</td></tr>';
     return;
   }
 
@@ -742,6 +801,7 @@ function renderTable() {
       <td>${renderSlots(p.taoist_slots, 'taoist')}</td>
       <td>${p.is_complete ? '<span class="complete-badge">완비</span>' : '<span class="recruiting-badge">모집</span>'}</td>
       <td>${p.organizer || '<span class="meta-text">-</span>'}</td>
+      <td class="meta-text" style="white-space:nowrap">${formatTime(p.created_at)}</td>
       <td class="meta-text" style="white-space:nowrap">${formatTime(p.updated_at)}</td>
       <td>
         <div class="actions">
@@ -752,7 +812,7 @@ function renderTable() {
     </tr>`;
 
     if (showRaw && p.raw_message) {
-      html += `<tr><td colspan="13" style="padding: 0 8px 8px 48px;">
+      html += `<tr><td colspan="14" style="padding: 0 8px 8px 48px;">
         <div class="raw-msg" onclick="this.classList.toggle('expanded')">${escapeHtml(p.raw_message)}</div>
       </td></tr>`;
     }
@@ -774,7 +834,11 @@ function formatTime(str) {
   if (!str) return '-';
   try {
     const d = new Date(str);
-    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const m = d.getMonth() + 1;
+    const day = d.getDate();
+    const h = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${m}/${day} ${h}:${min}`;
   } catch { return str; }
 }
 
@@ -902,7 +966,7 @@ async function saveParty() {
   try {
     const resp = await fetch('/api/party/admin/' + editingId, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(data)
     });
     const result = await resp.json();
@@ -924,7 +988,7 @@ async function deleteParty(id) {
   if (!confirm(`파티 #${id}을(를) 삭제하시겠습니까?`)) return;
 
   try {
-    const resp = await fetch('/api/party/admin/' + id, { method: 'DELETE' });
+    const resp = await fetch('/api/party/admin/' + id, { method: 'DELETE', headers: authHeaders() });
     const result = await resp.json();
 
     if (result.success) {
@@ -957,8 +1021,15 @@ document.addEventListener('keydown', e => {
 });
 
 // Init
-updateDateDisplay();
-loadParties();
+(async () => {
+  try {
+    await checkAuth();
+    updateDateDisplay();
+    loadParties();
+  } catch (e) {
+    console.error('Auth failed:', e);
+  }
+})();
 </script>
 </body>
 </html>

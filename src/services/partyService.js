@@ -17,6 +17,16 @@ class PartyService {
     return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
   }
 
+  /**
+   * 한국 시간 기준 현재 시각을 SQLite datetime 형식으로 반환
+   * @returns {string} 'YYYY-MM-DD HH:MM:SS'
+   */
+  _getKoreanDatetime() {
+    const d = this._getKoreanDate();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
   async initialize() {
     if (this.initialized) return;
 
@@ -70,8 +80,8 @@ class PartyService {
         raw_message TEXT,
         sender_name TEXT,
         room_id TEXT,
-        created_at TEXT DEFAULT (datetime('now','localtime')),
-        updated_at TEXT DEFAULT (datetime('now','localtime'))
+        created_at TEXT,
+        updated_at TEXT
       )
     `);
 
@@ -82,7 +92,7 @@ class PartyService {
         room_name TEXT,
         collect INTEGER DEFAULT 0,
         enabled INTEGER DEFAULT 1,
-        created_at TEXT DEFAULT (datetime('now','localtime'))
+        created_at TEXT
       )
     `);
 
@@ -98,6 +108,19 @@ class PartyService {
     // 기존 sender_name 기반 인덱스 → organizer 기반으로 변경
     this.db.run(`DROP INDEX IF EXISTS idx_party_unique`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_party_organizer ON party_posts(party_date, time_slot, organizer, room_id)`);
+
+    // UTC→KST 보정 마이그레이션 (1회성)
+    this.db.run(`CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY)`);
+    const done = this.db.exec(`SELECT 1 FROM _migrations WHERE name = 'utc_to_kst'`);
+    if (!done.length || !done[0].values.length) {
+      console.log('[PartyService] UTC→KST 마이그레이션: 기존 시간에 +9시간 보정');
+      this.db.run(`UPDATE party_posts SET created_at = datetime(created_at, '+9 hours') WHERE created_at IS NOT NULL`);
+      this.db.run(`UPDATE party_posts SET updated_at = datetime(updated_at, '+9 hours') WHERE updated_at IS NOT NULL`);
+      this.db.run(`UPDATE party_rooms SET created_at = datetime(created_at, '+9 hours') WHERE created_at IS NOT NULL`);
+      this.db.run(`INSERT INTO _migrations (name) VALUES ('utc_to_kst')`);
+      this.saveDb();
+      console.log('[PartyService] UTC→KST 마이그레이션 완료');
+    }
   }
 
   saveDb() {
@@ -144,8 +167,8 @@ class PartyService {
     try {
       this.db.run(
         `INSERT OR REPLACE INTO party_rooms (room_id, room_name, collect, enabled, created_at)
-         VALUES (?, ?, ?, 1, datetime('now','localtime'))`,
-        [roomId, roomName || '', collect ? 1 : 0]
+         VALUES (?, ?, ?, 1, ?)`,
+        [roomId, roomName || '', collect ? 1 : 0, this._getKoreanDatetime()]
       );
       this.saveDb();
       return true;
@@ -562,19 +585,18 @@ class PartyService {
     for (const party of parties) {
       if (!party.party_date || !party.time_slot) continue;
 
-      // 1단계: organizer 기준으로 기존 파티 검색
+      // 1단계: organizer 기준으로 기존 파티 검색 (room_id 무관 — 다른 방에서 전달된 경우도 매칭)
       let matchId = null;
-      const roomId = party.room_id || null;
-      const roomClause = roomId ? 'AND room_id = ?' : 'AND (room_id IS NULL OR room_id = ? OR room_id = \'undefined\')';
-      const roomParam = roomId || '';
-      const byOrganizer = this.db.exec(
-        `SELECT id FROM party_posts
-         WHERE party_date = ? AND time_slot = ? AND organizer = ? ${roomClause}
-         ORDER BY updated_at DESC LIMIT 1`,
-        [party.party_date, party.time_slot, party.organizer, roomParam]
-      );
-      if (byOrganizer.length > 0 && byOrganizer[0].values.length > 0) {
-        matchId = byOrganizer[0].values[0][0];
+      if (party.organizer) {
+        const byOrganizer = this.db.exec(
+          `SELECT id FROM party_posts
+           WHERE party_date = ? AND time_slot = ? AND organizer = ?
+           ORDER BY updated_at DESC LIMIT 1`,
+          [party.party_date, party.time_slot, party.organizer]
+        );
+        if (byOrganizer.length > 0 && byOrganizer[0].values.length > 0) {
+          matchId = byOrganizer[0].values[0][0];
+        }
       }
 
       // 2단계: organizer 매칭 실패 시, 멤버 겹침으로 같은 파티 검색
@@ -589,14 +611,14 @@ class PartyService {
            warrior_slots = ?, rogue_slots = ?, mage_slots = ?,
            cleric_slots = ?, taoist_slots = ?, requirements = ?,
            is_complete = ?, raw_message = ?, organizer = ?, sender_name = ?,
-           updated_at = datetime('now','localtime')
+           updated_at = ?
            WHERE id = ?`,
           [
             party.location, party.party_name,
             party.warrior_slots, party.rogue_slots, party.mage_slots,
             party.cleric_slots, party.taoist_slots, party.requirements,
             party.is_complete, party.raw_message, party.organizer, party.sender_name,
-            matchId
+            this._getKoreanDatetime(), matchId
           ]
         );
       } else {
@@ -604,14 +626,16 @@ class PartyService {
           `INSERT INTO party_posts
            (party_date, time_slot, location, party_name,
             warrior_slots, rogue_slots, mage_slots, cleric_slots, taoist_slots,
-            requirements, is_complete, raw_message, organizer, sender_name, room_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            requirements, is_complete, raw_message, organizer, sender_name, room_id,
+            created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             party.party_date, party.time_slot, party.location, party.party_name,
             party.warrior_slots, party.rogue_slots, party.mage_slots,
             party.cleric_slots, party.taoist_slots,
             party.requirements, party.is_complete, party.raw_message,
-            party.organizer, party.sender_name, party.room_id || null
+            party.organizer, party.sender_name, party.room_id || null,
+            this._getKoreanDatetime(), this._getKoreanDatetime()
           ]
         );
       }
@@ -629,14 +653,11 @@ class PartyService {
    * @returns {number|null} - 매칭된 party_posts.id
    */
   _findByMemberOverlap(party) {
-    const roomId = party.room_id || null;
-    const roomClause = roomId ? 'AND room_id = ?' : 'AND (room_id IS NULL OR room_id = ? OR room_id = \'undefined\')';
-    const roomParam = roomId || '';
     const candidates = this.db.exec(
       `SELECT id, warrior_slots, rogue_slots, mage_slots, cleric_slots, taoist_slots
        FROM party_posts
-       WHERE party_date = ? AND time_slot = ? ${roomClause}`,
-      [party.party_date, party.time_slot, roomParam]
+       WHERE party_date = ? AND time_slot = ?`,
+      [party.party_date, party.time_slot]
     );
 
     if (!candidates.length || !candidates[0].values.length) return null;
@@ -743,7 +764,8 @@ class PartyService {
     let sql = `
       SELECT id, party_date, time_slot, location, party_name,
              warrior_slots, rogue_slots, mage_slots, cleric_slots, taoist_slots,
-             requirements, is_complete, organizer, sender_name, updated_at, raw_message
+             requirements, is_complete, organizer, sender_name, updated_at, raw_message,
+             created_at
       FROM party_posts
       WHERE party_date = ?
     `;
@@ -787,7 +809,8 @@ class PartyService {
       organizer: row[12],
       sender_name: row[13],
       updated_at: row[14],
-      raw_message: row[15] || ''
+      raw_message: row[15] || '',
+      created_at: row[16]
     }));
 
     // returnAll이면 전체 반환 (빈자리 없는 파티 포함)
@@ -933,6 +956,42 @@ class PartyService {
   }
 
   // ── 통계 ──────────────────────────────────────
+
+  getRecentParties(limit = 30) {
+    if (!this.db) return [];
+
+    const result = this.db.exec(
+      `SELECT id, party_date, time_slot, location, party_name,
+              warrior_slots, rogue_slots, mage_slots, cleric_slots, taoist_slots,
+              is_complete, organizer, sender_name, room_id,
+              created_at, updated_at
+       FROM party_posts
+       ORDER BY updated_at DESC
+       LIMIT ?`,
+      [limit]
+    );
+
+    if (!result.length || !result[0].values.length) return [];
+
+    return result[0].values.map(row => ({
+      id: row[0],
+      party_date: row[1],
+      time_slot: row[2],
+      location: row[3],
+      party_name: row[4],
+      warrior_slots: this._safeJsonParse(row[5]),
+      rogue_slots: this._safeJsonParse(row[6]),
+      mage_slots: this._safeJsonParse(row[7]),
+      cleric_slots: this._safeJsonParse(row[8]),
+      taoist_slots: this._safeJsonParse(row[9]),
+      is_complete: row[10],
+      organizer: row[11],
+      sender_name: row[12],
+      room_id: row[13],
+      created_at: row[14],
+      updated_at: row[15]
+    }));
+  }
 
   getStats() {
     if (!this.db) return { success: false };
@@ -1085,7 +1144,8 @@ class PartyService {
 
       if (fields.length === 0) return { success: false, message: 'No fields to update' };
 
-      fields.push(`updated_at = datetime('now','localtime')`);
+      fields.push(`updated_at = ?`);
+      params.push(this._getKoreanDatetime());
       params.push(id);
 
       this.db.run(`UPDATE party_posts SET ${fields.join(', ')} WHERE id = ?`, params);

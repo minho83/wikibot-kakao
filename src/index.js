@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const crypto = require('crypto');
 require('dotenv').config();
 
 const webhookController = require('./controllers/webhookController');
@@ -12,6 +13,36 @@ const { NoticeService } = require('./services/noticeService');
 const { TradeService } = require('./services/tradeService');
 const { PartyService } = require('./services/partyService');
 const { rateLimiter, errorHandler } = require('./middleware');
+
+// ── 관리자 인증 ──────────────────────────────────────
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const adminTokens = new Set();
+
+function adminAuth(req, res, next) {
+  // ADMIN_PASSWORD 미설정 시 인증 없이 통과
+  if (!ADMIN_PASSWORD) return next();
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token || !adminTokens.has(token)) {
+    return res.status(401).json({ success: false, message: '인증이 필요합니다.' });
+  }
+  next();
+}
+
+// ── 활동 로그 (인메모리 링버퍼) ──────────────────────────
+const activityLog = [];
+const MAX_ACTIVITY_LOG = 100;
+
+function logActivity(event) {
+  const now = new Date();
+  const koTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+  activityLog.unshift({
+    time: koTime.toISOString(),
+    ...event
+  });
+  if (activityLog.length > MAX_ACTIVITY_LOG) {
+    activityLog.pop();
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -543,6 +574,15 @@ app.post('/api/trade/collect', async (req, res) => {
     const date = trade_date || new Date().toISOString().split('T')[0];
     const trades = tradeService.collectMessage(message, senderInfo, date, message_time);
 
+    if (trades.length > 0) {
+      logActivity({
+        type: 'trade_collect',
+        summary: `거래 ${trades.length}건 수집`,
+        count: trades.length,
+        sender: sender_name || ''
+      });
+    }
+
     res.json({ success: true, count: trades.length });
   } catch (error) {
     console.error('Trade collect error:', error);
@@ -742,6 +782,17 @@ app.post('/api/party/collect', async (req, res) => {
     const senderInfo = { name: sender_name };
     const parties = partyService.collectMessage(message, senderInfo, room_id);
 
+    if (parties.length > 0) {
+      const first = parties[0];
+      logActivity({
+        type: 'party_collect',
+        summary: `파티 ${parties.length}건: ${first.party_date || ''} ${first.time_slot || ''} @${first.organizer || sender_name || ''}`,
+        count: parties.length,
+        room_id: room_id || '',
+        sender: sender_name || ''
+      });
+    }
+
     res.json({ success: true, count: parties.length });
   } catch (error) {
     console.error('Party collect error:', error);
@@ -832,10 +883,109 @@ app.post('/api/party/cleanup', async (req, res) => {
   }
 });
 
+// ── 관리자 인증 API ──────────────────────────────────────
+
+// 로그인
+app.post('/api/admin/auth', (req, res) => {
+  // ADMIN_PASSWORD 미설정 시 인증 없이 통과
+  if (!ADMIN_PASSWORD) {
+    return res.json({ success: true, token: 'no-auth' });
+  }
+  const { password } = req.body;
+  if (password !== ADMIN_PASSWORD) {
+    return res.status(401).json({ success: false, message: '비밀번호가 틀렸습니다.' });
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  adminTokens.add(token);
+  res.json({ success: true, token });
+});
+
+// 토큰 검증
+app.get('/api/admin/verify', (req, res) => {
+  // ADMIN_PASSWORD 미설정 시 항상 통과
+  if (!ADMIN_PASSWORD) return res.json({ success: true });
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token || !adminTokens.has(token)) {
+    return res.status(401).json({ success: false });
+  }
+  res.json({ success: true });
+});
+
+// 활동 로그 조회
+app.get('/api/admin/activity', adminAuth, (req, res) => {
+  res.json({ success: true, activities: activityLog });
+});
+
+// 서버 상태 (모니터링용)
+app.get('/api/admin/status', adminAuth, async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const fs = require('fs');
+    const path = require('path');
+
+    const mem = process.memoryUsage();
+    const dbFiles = ['nickname.db', 'notice.db', 'trade.db', 'party.db'];
+    const databases = {};
+
+    for (const dbFile of dbFiles) {
+      const dbPath = path.join(__dirname, '..', dbFile);
+      try {
+        const fileStat = fs.statSync(dbPath);
+        databases[dbFile] = {
+          size_bytes: fileStat.size,
+          size_mb: (fileStat.size / 1024 / 1024).toFixed(2),
+          modified: fileStat.mtime.toISOString()
+        };
+      } catch (e) {
+        databases[dbFile] = { size_bytes: 0, size_mb: '0.00', error: 'not found' };
+      }
+    }
+
+    // 레코드 수
+    try { databases['trade.db'].records = tradeService.getStats().trades || 0; } catch (e) {}
+    try {
+      const ps = partyService.getStats();
+      databases['party.db'].records = ps.total_parties || 0;
+      databases['party.db'].today = ps.today_parties || 0;
+    } catch (e) {}
+    try { databases['nickname.db'].rooms = nicknameService.listRooms().length; } catch (e) {}
+
+    // 수집방 정보
+    const partyRooms = partyService.listPartyRooms();
+    const tradeRooms = tradeService.listTradeRooms();
+
+    res.json({
+      success: true,
+      uptime: process.uptime(),
+      memory: {
+        rss_mb: (mem.rss / 1024 / 1024).toFixed(1),
+        heap_used_mb: (mem.heapUsed / 1024 / 1024).toFixed(1),
+        heap_total_mb: (mem.heapTotal / 1024 / 1024).toFixed(1)
+      },
+      databases,
+      rooms: { party: partyRooms, trade: tradeRooms }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 최근 수집된 파티 (모니터링용)
+app.get('/api/admin/recent-parties', adminAuth, async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+    const parties = partyService.getRecentParties(limit);
+    res.json({ success: true, parties });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // ── 파티 관리 API (admin) ──────────────────────────────
 
 // 관리자용 파티 목록 (시간 필터 없이 전체)
-app.get('/api/party/admin/list', async (req, res) => {
+app.get('/api/party/admin/list', adminAuth, async (req, res) => {
   try {
     if (!initialized) await initializeService();
     const { date } = req.query;
@@ -848,7 +998,7 @@ app.get('/api/party/admin/list', async (req, res) => {
 });
 
 // 단일 파티 조회
-app.get('/api/party/admin/:id', async (req, res) => {
+app.get('/api/party/admin/:id', adminAuth, async (req, res) => {
   try {
     if (!initialized) await initializeService();
     const party = partyService.getPartyById(parseInt(req.params.id));
@@ -860,7 +1010,7 @@ app.get('/api/party/admin/:id', async (req, res) => {
 });
 
 // 파티 수정
-app.put('/api/party/admin/:id', async (req, res) => {
+app.put('/api/party/admin/:id', adminAuth, async (req, res) => {
   try {
     if (!initialized) await initializeService();
     const result = partyService.updateParty(parseInt(req.params.id), req.body);
@@ -871,7 +1021,7 @@ app.put('/api/party/admin/:id', async (req, res) => {
 });
 
 // 파티 삭제
-app.delete('/api/party/admin/:id', async (req, res) => {
+app.delete('/api/party/admin/:id', adminAuth, async (req, res) => {
   try {
     if (!initialized) await initializeService();
     const result = partyService.deleteParty(parseInt(req.params.id));

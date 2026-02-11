@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LOD 봇 모니터링</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --card-hover: #222633;
+    --border: #2a2e3d;
+    --text: #e1e4ed;
+    --text-dim: #8b90a0;
+    --accent: #6c72cb;
+    --success: #27ae60;
+    --warning: #e67e22;
+    --danger: #e74c3c;
+    --warrior: #e74c3c;
+    --rogue: #9b59b6;
+    --mage: #3498db;
+    --cleric: #f1c40f;
+    --taoist: #1abc9c;
+  }
+
+  body {
+    font-family: 'Segoe UI', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #1a1d27 0%, #252a3a 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .header-left { display: flex; align-items: center; gap: 16px; }
+
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent), #cb69c1);
+    border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px;
+  }
+  .logo h1 { font-size: 18px; font-weight: 700; }
+
+  .nav-links { display: flex; gap: 12px; }
+  .nav-links a {
+    color: var(--text-dim); text-decoration: none; font-size: 13px;
+    padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
+  }
+  .nav-links a:hover { background: var(--card-hover); color: var(--text); }
+
+  .header-right { display: flex; align-items: center; gap: 12px; }
+
+  .refresh-indicator { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+  .refresh-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); animation: blink 2s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .main { max-width: 1400px; margin: 0 auto; padding: 20px 24px; }
+
+  /* Stats */
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px; margin-bottom: 24px;
+  }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .stat-label { font-size: 11px; color: var(--text-dim); font-weight: 600; margin-bottom: 4px; }
+  .stat-value { font-size: 22px; font-weight: 700; color: var(--accent); }
+  .stat-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+  /* Section */
+  .section { margin-bottom: 24px; }
+  .section-title {
+    font-size: 15px; font-weight: 700; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title .badge { background: var(--accent); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+
+  /* Party table */
+  .party-table {
+    width: 100%; border-collapse: collapse; background: var(--card);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden; font-size: 13px;
+  }
+  .party-table th {
+    background: rgba(108,114,203,0.1); padding: 10px 8px; text-align: left;
+    font-weight: 600; color: var(--text-dim); font-size: 11px; white-space: nowrap;
+  }
+  .party-table td { padding: 8px; border-top: 1px solid var(--border); }
+  .party-table tr:hover td { background: var(--card-hover); }
+
+  .slot-cell { display: flex; flex-wrap: wrap; gap: 2px; }
+  .slot-tag {
+    display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 11px; white-space: nowrap;
+  }
+  .slot-tag.filled { background: rgba(108,114,203,0.15); color: var(--text); }
+  .slot-tag.empty { background: rgba(230,126,34,0.2); color: var(--warning); font-style: italic; }
+
+  .time-col { white-space: nowrap; }
+  .date-col { white-space: nowrap; font-size: 12px; }
+  .meta { color: var(--text-dim); font-size: 11px; }
+  .updated-new { color: var(--success); font-weight: 600; }
+  .updated-old { color: var(--text-dim); }
+
+  .complete-badge { background: rgba(39,174,96,0.2); color: var(--success); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+  .recruiting-badge { background: rgba(230,126,34,0.2); color: var(--warning); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+
+  /* Activity log */
+  .activity-log { background: var(--card); border: 1px solid var(--border); border-radius: 10px; max-height: 300px; overflow-y: auto; }
+  .activity-item { padding: 8px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  .activity-item:last-child { border-bottom: none; }
+  .activity-time { font-size: 11px; color: var(--text-dim); white-space: nowrap; min-width: 55px; }
+  .activity-icon { width: 22px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+  .activity-icon.party { background: rgba(108,114,203,0.2); color: var(--accent); }
+  .activity-icon.trade { background: rgba(230,126,34,0.2); color: var(--warning); }
+  .activity-text { flex: 1; }
+  .activity-sender { font-size: 11px; color: var(--text-dim); margin-left: 6px; }
+  .empty-msg { text-align: center; padding: 30px; color: var(--text-dim); }
+
+  /* Room chips */
+  .room-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .room-chip { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; font-size: 13px; }
+  .room-chip .room-name { font-weight: 600; }
+  .room-chip .room-mode { font-size: 11px; color: var(--text-dim); margin-left: 6px; }
+  .room-chip.collect { border-left: 3px solid var(--success); }
+  .room-chip.query-only { border-left: 3px solid var(--text-dim); }
+
+  /* DB table */
+  .db-table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; font-size: 13px; }
+  .db-table th { background: rgba(108,114,203,0.1); padding: 8px 12px; text-align: left; font-weight: 600; color: var(--text-dim); font-size: 11px; }
+  .db-table td { padding: 8px 12px; border-top: 1px solid var(--border); }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+  @media (max-width: 768px) {
+    .header { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
+    .main { padding: 12px 16px; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo">
+      <div class="logo-icon">&#x1F4CA;</div>
+      <h1>봇 모니터링</h1>
+    </div>
+    <div class="nav-links">
+      <a href="/">빈자리 뷰어</a>
+      <a href="/admin.html">파티 DB 관리</a>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="refresh-indicator">
+      <div class="refresh-dot"></div>
+      <span id="refreshTimer">10s</span>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">업타임</div>
+      <div class="stat-value" id="uptime">-</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">메모리</div>
+      <div class="stat-value" id="memory">-</div>
+      <div class="stat-sub" id="memorySub"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">오늘 파티</div>
+      <div class="stat-value" id="todayParties">-</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">전체 파티</div>
+      <div class="stat-value" id="totalParties">-</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">거래 레코드</div>
+      <div class="stat-value" id="tradeRecords">-</div>
+    </div>
+  </div>
+
+  <!-- Recent Parties (main section) -->
+  <div class="section">
+    <div class="section-title">최근 수집/업데이트된 파티 <span class="badge" id="recentCount">0</span></div>
+    <div style="overflow-x:auto; border:1px solid var(--border); border-radius:10px;">
+      <table class="party-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>파티 날짜</th>
+            <th>시간대</th>
+            <th>장소</th>
+            <th>주최</th>
+            <th>전사</th>
+            <th>도적</th>
+            <th>법사</th>
+            <th>직자</th>
+            <th>도가</th>
+            <th>상태</th>
+            <th>등록</th>
+            <th>수정</th>
+          </tr>
+        </thead>
+        <tbody id="recentBody">
+          <tr><td colspan="13" class="empty-msg">로딩 중...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <!-- Activity Log -->
+    <div class="section">
+      <div class="section-title">실시간 수집 로그 <span class="badge" id="activityCount">0</span></div>
+      <div class="activity-log" id="activityLog">
+        <div class="empty-msg">서버 시작 후 수집된 활동이 여기에 표시됩니다.</div>
+      </div>
+    </div>
+
+    <div>
+      <!-- Rooms -->
+      <div class="section">
+        <div class="section-title">수집방 <span class="badge" id="roomCount">0</span></div>
+        <div class="room-list" id="roomList">
+          <span style="color:var(--text-dim)">로딩 중...</span>
+        </div>
+      </div>
+
+      <!-- DB -->
+      <div class="section">
+        <div class="section-title">DB 상태</div>
+        <table class="db-table">
+          <thead><tr><th>파일</th><th>크기</th><th>레코드</th></tr></thead>
+          <tbody id="dbTableBody">
+            <tr><td colspan="3" class="empty-msg">로딩 중...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const JOB_NAMES = { warrior:'전사', rogue:'도적', mage:'법사', cleric:'직자', taoist:'도가' };
+const JOB_KEYS = ['warrior','rogue','mage','cleric','taoist'];
+let adminToken = localStorage.getItem('adminToken') || '';
+
+// ── Auth ──
+async function checkAuth() {
+  if (!adminToken) {
+    try {
+      const resp = await fetch('/api/admin/verify');
+      const data = await resp.json();
+      if (data.success) { adminToken = 'no-auth'; return; }
+    } catch {}
+    return await doLogin();
+  }
+  try {
+    const resp = await fetch('/api/admin/verify', { headers: { 'Authorization': 'Bearer ' + adminToken } });
+    if (!resp.ok) { adminToken = ''; localStorage.removeItem('adminToken'); return await doLogin(); }
+  } catch { return await doLogin(); }
+}
+
+async function doLogin() {
+  const pw = prompt('관리자 비밀번호를 입력하세요:');
+  if (!pw) {
+    document.body.innerHTML = '<div style="text-align:center;padding:100px;color:#8b90a0;">인증 필요. 새로고침하세요.</div>';
+    throw new Error('auth_cancelled');
+  }
+  try {
+    const resp = await fetch('/api/admin/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({password:pw}) });
+    const data = await resp.json();
+    if (data.success && data.token) { adminToken = data.token; localStorage.setItem('adminToken', adminToken); }
+    else { alert(data.message||'인증 실패'); return await doLogin(); }
+  } catch(e) { if(e.message==='auth_cancelled') throw e; alert('서버 연결 실패'); throw e; }
+}
+
+function authHeaders() { return { 'Authorization': 'Bearer ' + adminToken }; }
+
+// ── Load Status ──
+async function loadStatus() {
+  try {
+    const resp = await fetch('/api/admin/status', { headers: authHeaders() });
+    if (resp.status === 401) { adminToken=''; localStorage.removeItem('adminToken'); await checkAuth(); return; }
+    const data = await resp.json();
+    if (!data.success) return;
+
+    const secs = Math.floor(data.uptime);
+    const h = Math.floor(secs/3600), m = Math.floor((secs%3600)/60);
+    document.getElementById('uptime').textContent = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    document.getElementById('memory').textContent = data.memory.rss_mb + ' MB';
+    document.getElementById('memorySub').textContent = `Heap: ${data.memory.heap_used_mb}/${data.memory.heap_total_mb}`;
+
+    const db = data.databases;
+    document.getElementById('todayParties').textContent = db['party.db']?.today ?? '-';
+    document.getElementById('totalParties').textContent = db['party.db']?.records ?? '-';
+    document.getElementById('tradeRecords').textContent = db['trade.db']?.records ?? '-';
+
+    // DB table
+    let dbHtml = '';
+    for (const [name, info] of Object.entries(db)) {
+      const records = info.records ?? info.rooms ?? '-';
+      dbHtml += `<tr><td style="font-weight:600">${name}</td><td>${info.size_mb} MB</td><td>${records}</td></tr>`;
+    }
+    document.getElementById('dbTableBody').innerHTML = dbHtml;
+
+    // Rooms
+    const allRooms = [...(data.rooms.party||[]), ...(data.rooms.trade||[])];
+    document.getElementById('roomCount').textContent = allRooms.length;
+    document.getElementById('roomList').innerHTML = allRooms.length === 0
+      ? '<span style="color:var(--text-dim)">등록된 수집방 없음</span>'
+      : allRooms.map(r => {
+          const mode = r.collect ? '수집+조회' : '조회';
+          return `<div class="room-chip ${r.collect?'collect':'query-only'}"><span class="room-name">${r.room_name||r.room_id}</span><span class="room-mode">${mode}</span></div>`;
+        }).join('');
+  } catch(err) { console.error('Status error:', err); }
+}
+
+// ── Load Recent Parties ──
+async function loadRecentParties() {
+  try {
+    const resp = await fetch('/api/admin/recent-parties?limit=30', { headers: authHeaders() });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!data.success) return;
+
+    const parties = data.parties || [];
+    document.getElementById('recentCount').textContent = parties.length;
+
+    if (parties.length === 0) {
+      document.getElementById('recentBody').innerHTML = '<tr><td colspan="13" class="empty-msg">수집된 파티 데이터가 없습니다.</td></tr>';
+      return;
+    }
+
+    document.getElementById('recentBody').innerHTML = parties.map(p => {
+      const slots = job => renderSlots(p[job+'_slots'], job);
+      const isNew = isRecent(p.updated_at, 10); // 10분 이내
+      const updClass = isNew ? 'updated-new' : 'updated-old';
+
+      return `<tr>
+        <td class="meta">${p.id}</td>
+        <td class="date-col">${p.party_date||'-'}</td>
+        <td class="time-col">${p.time_slot||'-'}</td>
+        <td>${p.location||'<span class="meta">-</span>'}</td>
+        <td>${p.organizer||'<span class="meta">-</span>'}</td>
+        <td>${slots('warrior')}</td>
+        <td>${slots('rogue')}</td>
+        <td>${slots('mage')}</td>
+        <td>${slots('cleric')}</td>
+        <td>${slots('taoist')}</td>
+        <td>${p.is_complete ? '<span class="complete-badge">완비</span>' : '<span class="recruiting-badge">모집</span>'}</td>
+        <td class="meta">${fmtDateTime(p.created_at)}</td>
+        <td class="${updClass}">${fmtDateTime(p.updated_at)}</td>
+      </tr>`;
+    }).join('');
+  } catch(err) { console.error('Recent parties error:', err); }
+}
+
+function renderSlots(slots, job) {
+  if (!slots || slots.length === 0) return '<span class="meta">-</span>';
+  return '<div class="slot-cell">' + slots.map(s =>
+    s === '' ? `<span class="slot-tag empty">\u25CB</span>` : `<span class="slot-tag filled">${esc(s)}</span>`
+  ).join('') + '</div>';
+}
+
+function isRecent(dateStr, minutes) {
+  if (!dateStr) return false;
+  try { return (Date.now() - new Date(dateStr).getTime()) < minutes * 60 * 1000; }
+  catch { return false; }
+}
+
+function fmtDateTime(str) {
+  if (!str) return '-';
+  try {
+    const d = new Date(str);
+    const m = d.getMonth()+1, day = d.getDate();
+    const h = String(d.getHours()).padStart(2,'0'), min = String(d.getMinutes()).padStart(2,'0');
+    return `${m}/${day} ${h}:${min}`;
+  } catch { return str; }
+}
+
+// ── Load Activity ──
+async function loadActivity() {
+  try {
+    const resp = await fetch('/api/admin/activity', { headers: authHeaders() });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!data.success) return;
+
+    const activities = data.activities || [];
+    document.getElementById('activityCount').textContent = activities.length;
+
+    if (activities.length === 0) {
+      document.getElementById('activityLog').innerHTML = '<div class="empty-msg">서버 시작 후 수집 활동이 여기에 표시됩니다.</div>';
+      return;
+    }
+
+    document.getElementById('activityLog').innerHTML = activities.map(a => {
+      const isParty = a.type?.includes('party');
+      const time = fmtDateTime(a.time);
+      const sender = a.sender ? `<span class="activity-sender">${esc(a.sender)}</span>` : '';
+      return `<div class="activity-item">
+        <span class="activity-time">${time}</span>
+        <div class="activity-icon ${isParty?'party':'trade'}">${isParty?'P':'T'}</div>
+        <div class="activity-text">${esc(a.summary||'')} ${sender}</div>
+      </div>`;
+    }).join('');
+  } catch(err) { console.error('Activity error:', err); }
+}
+
+function esc(text) {
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
+}
+
+// ── Auto refresh ──
+let refreshCountdown = 10;
+
+async function refresh() {
+  await Promise.all([loadStatus(), loadRecentParties(), loadActivity()]);
+  refreshCountdown = 10;
+}
+
+setInterval(() => {
+  refreshCountdown--;
+  document.getElementById('refreshTimer').textContent = `${refreshCountdown}s`;
+  if (refreshCountdown <= 0) refresh();
+}, 1000);
+
+// ── Init ──
+(async () => {
+  try { await checkAuth(); await refresh(); }
+  catch(e) { console.error('Init error:', e); }
+})();
+</script>
+</body>
+</html>
