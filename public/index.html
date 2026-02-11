@@ -413,33 +413,6 @@
   }
 
   /* Copy button */
-  .copy-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background: rgba(108,114,203,0.15);
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    font-size: 11px;
-    font-weight: 600;
-    padding: 4px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.15s;
-    white-space: nowrap;
-  }
-
-  .copy-btn:hover {
-    background: var(--accent);
-    color: #fff;
-  }
-
-  .copy-btn.copied {
-    background: var(--complete);
-    border-color: var(--complete);
-    color: #fff;
-  }
-
   .card-actions {
     display: flex;
     align-items: center;
@@ -1308,10 +1281,9 @@ function renderPartyCard(party) {
       ${vacancyTags ? `<div class="vacancy-summary">${vacancyTags}</div>` : ''}
       <div class="slot-rows">${slotRows}</div>
       ${reqHtml}
-      <div class="card-actions">
-        <button class="copy-btn" onclick="copyPartyTemplate(this, '${cardId}')">📋 구인글 복사</button>
-        ${hasRawMessage ? `<button class="copy-raw-btn" onclick="copyRawMessage(this, '${cardId}')">📄 원문 복사</button>` : ''}
-      </div>
+      ${hasRawMessage ? `<div class="card-actions">
+        <button class="copy-raw-btn" onclick="copyRawMessage(this, '${cardId}')">📄 원문 복사</button>
+      </div>` : ''}
     </div>
   `;
 }
@@ -1395,84 +1367,6 @@ function clearMySearch() {
   document.getElementById('myNameInput').value = '';
   document.getElementById('mySearchClear').classList.remove('show');
   loadParties();
-}
-
-// ── Copy party template ──
-// 파티 데이터에서 직접 구인글 생성 (실제 스펙/조건 포함)
-function generatePartyTemplate(party) {
-  const loc = party.location || '';
-  const time = party.time_slot || '';
-
-  // 날짜: 2/7(금)
-  const d = currentDate;
-  const month = d.getMonth() + 1;
-  const day = d.getDate();
-  const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-  const dateStr = `${month}/${day}(${dayNames[d.getDay()]})`;
-
-  const lines = [];
-
-  // ★ 타이틀 ★
-  const titleParts = [loc, party.party_name].filter(Boolean).join(' ');
-  if (titleParts) lines.push(`★${titleParts}★`);
-
-  // # 스펙 조건 (파티 데이터에서 가져옴)
-  const reqs = party.requirements || {};
-  if (typeof reqs === 'object' && Object.keys(reqs).length > 0) {
-    Object.entries(reqs).forEach(([job, req]) => {
-      lines.push(`#${job} ${req}`);
-    });
-  }
-
-  // 빈 줄 + 날짜/시간
-  if (lines.length > 0) lines.push('');
-  const timePart = time ? ` #${time}` : '';
-  const locPart = loc ? ` (${loc})` : '';
-  lines.push(`${dateStr}${timePart}${locPart}`);
-
-  // 직업 슬롯: 전사 : [닉네임][닉네임][]
-  const jobs = ['warrior', 'rogue', 'mage', 'cleric', 'taoist'];
-  jobs.forEach(job => {
-    const slots = party[`${job}_slots`] || [];
-    if (slots.length === 0) return;
-    const jobKr = JOB_INFO[job].kr;
-    const slotStr = slots.map(s => s === '' ? '[]' : `[${s}]`).join('');
-    lines.push(`${jobKr} : ${slotStr}`);
-  });
-
-  // @파티장
-  const organizer = party.organizer || (party.sender_name ? party.sender_name.split('/')[0] : '');
-  lines.push('');
-  lines.push(`@${organizer || '아이디'}`);
-
-  return lines.join('\n');
-}
-
-async function copyPartyTemplate(btn, cardId) {
-  const party = partyDataMap[cardId];
-  if (!party) return;
-
-  const text = generatePartyTemplate(party);
-
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    // Fallback for older browsers
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.cssText = 'position:fixed;opacity:0';
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-  }
-
-  btn.textContent = '✅ 복사됨!';
-  btn.classList.add('copied');
-  setTimeout(() => {
-    btn.textContent = '📋 구인글 복사';
-    btn.classList.remove('copied');
-  }, 2000);
 }
 
 // ── Copy raw message ──
