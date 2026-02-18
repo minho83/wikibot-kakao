@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LOD 파티 DB 관리</title>
+<title>LOD 관리 패널</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -448,6 +448,142 @@
 
   .raw-msg.expanded { max-height: none; }
 
+  /* LOD DB 관리 섹션 */
+  .section-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-top: 8px;
+  }
+
+  .section-title .section-icon {
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, var(--accent), #cb69c1);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+
+  .lod-section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+
+  .lod-info-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .lod-info-chip {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  .lod-info-chip strong { color: var(--accent); }
+
+  .upload-area {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+    transition: all 0.2s;
+    cursor: pointer;
+    margin-bottom: 12px;
+  }
+
+  .upload-area:hover, .upload-area.dragover {
+    border-color: var(--accent);
+    background: rgba(108,114,203,0.05);
+  }
+
+  .upload-area input[type="file"] { display: none; }
+
+  .upload-area .upload-icon { font-size: 32px; margin-bottom: 8px; }
+  .upload-area .upload-text { color: var(--text-dim); font-size: 13px; }
+  .upload-area .upload-filename {
+    color: var(--accent);
+    font-weight: 600;
+    margin-top: 6px;
+  }
+
+  .upload-progress {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    display: none;
+  }
+
+  .upload-progress .bar {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.3s;
+  }
+
+  .backup-list {
+    margin-top: 12px;
+  }
+
+  .backup-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+
+  .backup-item .backup-info { color: var(--text-dim); }
+
+  .section-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 24px 0;
+  }
+
+  .tab-row {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 20px;
+  }
+
+  .tab-btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.15s;
+  }
+
+  .tab-btn:hover { background: var(--card-hover); color: var(--text); }
+  .tab-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
   @media (max-width: 768px) {
     .header { padding: 12px 16px; }
     .main { padding: 12px 16px; }
@@ -462,7 +598,7 @@
   <div class="header-left">
     <div class="logo">
       <div class="logo-icon">&#x2699;</div>
-      <h1>파티 DB 관리</h1>
+      <h1>LOD 관리 패널</h1>
     </div>
     <a href="/" class="back-link">&#x2190; 빈자리 뷰어</a>
     <a href="/monitor.html" class="back-link">&#x1F4CA; 모니터링</a>
@@ -479,6 +615,56 @@
 </div>
 
 <div class="main">
+  <!-- 탭 네비게이션 -->
+  <div class="tab-row">
+    <button class="tab-btn active" onclick="switchTab('lod')">LOD DB 관리</button>
+    <button class="tab-btn" onclick="switchTab('party')">파티 DB 관리</button>
+  </div>
+
+  <!-- LOD DB 관리 탭 -->
+  <div class="tab-content active" id="tab-lod">
+    <div class="lod-section">
+      <div class="section-title">
+        <div class="section-icon">&#x1F4BE;</div>
+        현재 DB 정보
+      </div>
+      <div class="lod-info-row" id="lodInfoRow">
+        <div class="lod-info-chip">불러오는 중...</div>
+      </div>
+    </div>
+
+    <div class="lod-section">
+      <div class="section-title">
+        <div class="section-icon">&#x2B06;</div>
+        DB 업로드
+      </div>
+      <div class="upload-area" id="uploadArea" onclick="document.getElementById('dbFileInput').click()">
+        <div class="upload-icon">&#x1F4C1;</div>
+        <div>클릭하거나 파일을 드래그하세요</div>
+        <div class="upload-text">.db / .sqlite 파일 (최대 50MB)</div>
+        <div class="upload-filename" id="uploadFilename"></div>
+        <input type="file" id="dbFileInput" accept=".db,.sqlite,.sqlite3" onchange="onFileSelected(this)">
+      </div>
+      <div class="upload-progress" id="uploadProgress">
+        <div class="bar" id="uploadBar"></div>
+      </div>
+      <button class="btn btn-primary" id="uploadBtn" onclick="uploadDb()" disabled>업로드 및 적용</button>
+      <span id="uploadStatus" style="margin-left:12px; font-size:13px; color:var(--text-dim);"></span>
+    </div>
+
+    <div class="lod-section">
+      <div class="section-title">
+        <div class="section-icon">&#x1F4CB;</div>
+        백업 목록
+      </div>
+      <div class="backup-list" id="backupList">
+        <div style="color:var(--text-dim); font-size:13px;">불러오는 중...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 파티 DB 관리 탭 -->
+  <div class="tab-content" id="tab-party">
   <div class="stats-row" id="statsRow"></div>
 
   <div class="toolbar">
@@ -525,7 +711,8 @@
       </tbody>
     </table>
   </div>
-</div>
+</div><!-- /tab-party -->
+</div><!-- /main -->
 
 <!-- Edit Modal -->
 <div class="modal-overlay" id="editModal">
@@ -1020,12 +1207,191 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeModal();
 });
 
+// ── 탭 전환 ──
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+
+  event.target.classList.add('active');
+  document.getElementById('tab-' + tabName).classList.add('active');
+
+  if (tabName === 'party') loadParties();
+  if (tabName === 'lod') { loadLodInfo(); loadBackups(); }
+}
+
+// ── LOD DB 관리 ──
+let selectedFile = null;
+
+async function loadLodInfo() {
+  try {
+    const resp = await fetch('/api/lod/info');
+    const data = await resp.json();
+    if (!data.success) return;
+
+    let html = '';
+    if (data.file && !data.file.error) {
+      html += `<div class="lod-info-chip">파일 크기: <strong>${data.file.size_mb} MB</strong></div>`;
+      html += `<div class="lod-info-chip">수정일: <strong>${new Date(data.file.modified).toLocaleString('ko-KR')}</strong></div>`;
+    }
+    if (data.data) {
+      Object.entries(data.data).forEach(([key, val]) => {
+        html += `<div class="lod-info-chip">${key}: <strong>${val.toLocaleString()}</strong></div>`;
+      });
+    }
+    document.getElementById('lodInfoRow').innerHTML = html || '<div class="lod-info-chip">DB 없음</div>';
+  } catch (err) {
+    document.getElementById('lodInfoRow').innerHTML = '<div class="lod-info-chip" style="color:var(--danger);">로드 실패</div>';
+  }
+}
+
+// 파일 선택
+function onFileSelected(input) {
+  if (input.files && input.files[0]) {
+    selectedFile = input.files[0];
+    document.getElementById('uploadFilename').textContent = selectedFile.name + ' (' + (selectedFile.size / 1024 / 1024).toFixed(2) + ' MB)';
+    document.getElementById('uploadBtn').disabled = false;
+  }
+}
+
+// 드래그앤드롭
+const uploadArea = document.getElementById('uploadArea');
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadArea.classList.remove('dragover');
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+    const file = e.dataTransfer.files[0];
+    if (file.name.endsWith('.db') || file.name.endsWith('.sqlite') || file.name.endsWith('.sqlite3')) {
+      selectedFile = file;
+      document.getElementById('dbFileInput').files = e.dataTransfer.files;
+      document.getElementById('uploadFilename').textContent = file.name + ' (' + (file.size / 1024 / 1024).toFixed(2) + ' MB)';
+      document.getElementById('uploadBtn').disabled = false;
+    } else {
+      showToast('.db 또는 .sqlite 파일만 가능합니다.', true);
+    }
+  }
+});
+
+// 업로드
+async function uploadDb() {
+  if (!selectedFile) return;
+  if (!confirm('현재 DB를 교체합니다. 기존 DB는 자동 백업됩니다.\n계속하시겠습니까?')) return;
+
+  const formData = new FormData();
+  formData.append('dbfile', selectedFile);
+
+  const progressEl = document.getElementById('uploadProgress');
+  const barEl = document.getElementById('uploadBar');
+  const statusEl = document.getElementById('uploadStatus');
+  const btn = document.getElementById('uploadBtn');
+
+  progressEl.style.display = 'block';
+  barEl.style.width = '0%';
+  btn.disabled = true;
+  statusEl.textContent = '업로드 중...';
+
+  try {
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener('progress', e => {
+      if (e.lengthComputable) {
+        barEl.style.width = Math.round(e.loaded / e.total * 100) + '%';
+      }
+    });
+
+    const result = await new Promise((resolve, reject) => {
+      xhr.onload = () => {
+        try { resolve(JSON.parse(xhr.responseText)); }
+        catch { reject(new Error('응답 파싱 실패')); }
+      };
+      xhr.onerror = () => reject(new Error('네트워크 오류'));
+      xhr.open('POST', '/api/lod/upload');
+      xhr.send(formData);
+    });
+
+    if (result.success) {
+      barEl.style.width = '100%';
+      statusEl.textContent = '';
+      let msg = 'DB 업데이트 완료!';
+      if (result.counts) {
+        msg += ` (아이템: ${result.counts.items}, 스킬: ${result.counts.skills}, 마법: ${result.counts.spells})`;
+      }
+      showToast(msg);
+      loadLodInfo();
+      loadBackups();
+    } else {
+      showToast('업로드 실패: ' + result.message, true);
+      statusEl.textContent = result.message;
+    }
+  } catch (err) {
+    showToast('업로드 오류: ' + err.message, true);
+    statusEl.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    selectedFile = null;
+    document.getElementById('uploadFilename').textContent = '';
+    document.getElementById('dbFileInput').value = '';
+    setTimeout(() => { progressEl.style.display = 'none'; }, 2000);
+  }
+}
+
+// 백업 목록
+async function loadBackups() {
+  try {
+    const resp = await fetch('/api/lod/backups');
+    const data = await resp.json();
+    const list = document.getElementById('backupList');
+
+    if (!data.success || !data.backups || data.backups.length === 0) {
+      list.innerHTML = '<div style="color:var(--text-dim); font-size:13px;">백업 없음</div>';
+      return;
+    }
+
+    list.innerHTML = data.backups.map(b => `
+      <div class="backup-item">
+        <div>
+          <strong>${b.name}</strong>
+          <span class="backup-info"> | ${b.size_mb} MB | ${new Date(b.created).toLocaleString('ko-KR')}</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="restoreBackup('${b.name}')">복원</button>
+      </div>
+    `).join('');
+  } catch (err) {
+    document.getElementById('backupList').innerHTML = '<div style="color:var(--danger); font-size:13px;">로드 실패</div>';
+  }
+}
+
+// 백업 복원
+async function restoreBackup(name) {
+  if (!confirm(`${name} 백업으로 복원합니다.\n현재 DB가 교체됩니다. 계속하시겠습니까?`)) return;
+
+  try {
+    const resp = await fetch('/api/lod/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backup_name: name })
+    });
+    const result = await resp.json();
+
+    if (result.success) {
+      showToast('복원 완료! (' + result.totalLoaded + '개 데이터 로드)');
+      loadLodInfo();
+    } else {
+      showToast('복원 실패: ' + result.message, true);
+    }
+  } catch (err) {
+    showToast('복원 오류', true);
+  }
+}
+
 // Init
 (async () => {
   try {
     await checkAuth();
     updateDateDisplay();
-    loadParties();
+    loadLodInfo();
+    loadBackups();
   } catch (e) {
     console.error('Auth failed:', e);
   }

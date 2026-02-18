@@ -61,7 +61,9 @@
       "mcp__puppeteer__puppeteer_click",
       "mcp__puppeteer__puppeteer_fill",
       "Bash(tasklist:*)",
-      "mcp__github__create_repository"
+      "mcp__github__create_repository",
+      "Bash(git rebase:*)",
+      "Bash(GIT_EDITOR=true git rebase:*)"
     ],
     "deny": []
   }

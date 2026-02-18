@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const crypto = require('crypto');
+const multer = require('multer');
 require('dotenv').config();
 
 const webhookController = require('./controllers/webhookController');
@@ -1288,6 +1289,205 @@ app.post('/api/wiki/refresh', (req, res) => {
   wikiCache.expires = 0;
   wikiCache.children = {};
   res.json({ success: true, message: '위키 캐시가 초기화되었습니다.' });
+});
+
+// ── LOD DB 관리 API ──────────────────────────────────────
+
+// multer 설정: 임시 디렉토리에 업로드
+const lodUpload = multer({
+  dest: path.join(__dirname, '..', 'LOD_DB', 'tmp'),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  fileFilter: (req, file, cb) => {
+    if (file.originalname.endsWith('.db') || file.originalname.endsWith('.sqlite') || file.originalname.endsWith('.sqlite3')) {
+      cb(null, true);
+    } else {
+      cb(new Error('DB 파일(.db, .sqlite)만 업로드 가능합니다.'));
+    }
+  }
+});
+
+// LOD DB 정보 조회
+app.get('/api/lod/info', async (req, res) => {
+  try {
+    const fs = require('fs');
+    const lodPath = path.join(__dirname, '..', 'LOD_DB', 'lod.db');
+
+    let fileInfo = null;
+    try {
+      const stat = fs.statSync(lodPath);
+      fileInfo = {
+        size_bytes: stat.size,
+        size_mb: (stat.size / 1024 / 1024).toFixed(2),
+        modified: stat.mtime.toISOString()
+      };
+    } catch (e) {
+      fileInfo = { error: 'DB 파일 없음' };
+    }
+
+    const stats = searchService.getStats();
+
+    res.json({
+      success: true,
+      file: fileInfo,
+      data: stats.success ? stats.stats : null
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// LOD DB 업로드 및 교체
+app.post('/api/lod/upload', lodUpload.single('dbfile'), async (req, res) => {
+  const fs = require('fs');
+
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: '파일이 없습니다.' });
+  }
+
+  const uploadedPath = req.file.path;
+  const lodDir = path.join(__dirname, '..', 'LOD_DB');
+  const lodPath = path.join(lodDir, 'lod.db');
+  const backupPath = path.join(lodDir, `lod_backup_${Date.now()}.db`);
+
+  try {
+    // 1. 업로드된 파일이 유효한 SQLite DB인지 검증
+    const initSqlJs = require('sql.js');
+    const SQL = await initSqlJs();
+    const buffer = fs.readFileSync(uploadedPath);
+    const testDb = new SQL.Database(buffer);
+
+    // items, skills, spells, action_info 테이블 존재 확인
+    const requiredTables = ['items', 'skills', 'spells', 'action_info'];
+    const tablesResult = testDb.exec("SELECT name FROM sqlite_master WHERE type='table'");
+    const existingTables = tablesResult.length > 0 ? tablesResult[0].values.map(v => v[0]) : [];
+
+    const missing = requiredTables.filter(t => !existingTables.includes(t));
+    if (missing.length > 0) {
+      testDb.close();
+      fs.unlinkSync(uploadedPath);
+      return res.status(400).json({
+        success: false,
+        message: `필수 테이블 누락: ${missing.join(', ')}`
+      });
+    }
+
+    // 간단한 데이터 수 확인
+    const counts = {};
+    for (const table of requiredTables) {
+      const r = testDb.exec(`SELECT COUNT(*) FROM ${table}`);
+      counts[table] = r.length > 0 ? r[0].values[0][0] : 0;
+    }
+    testDb.close();
+
+    // 2. 기존 DB 백업
+    if (fs.existsSync(lodPath)) {
+      fs.copyFileSync(lodPath, backupPath);
+    }
+
+    // 3. 새 DB로 교체
+    fs.copyFileSync(uploadedPath, lodPath);
+    fs.unlinkSync(uploadedPath);
+
+    // 4. SearchService 재초기화
+    searchService.initialized = false;
+    searchService.db = null;
+    searchService.fuse = null;
+    searchService.data = [];
+    await searchService.initialize();
+
+    // 5. 오래된 백업 정리 (최근 3개만 유지)
+    const backups = fs.readdirSync(lodDir)
+      .filter(f => f.startsWith('lod_backup_') && f.endsWith('.db'))
+      .sort()
+      .reverse();
+
+    backups.slice(3).forEach(f => {
+      try { fs.unlinkSync(path.join(lodDir, f)); } catch (e) { /* ignore */ }
+    });
+
+    res.json({
+      success: true,
+      message: 'DB 업데이트 완료',
+      counts,
+      backup: path.basename(backupPath),
+      totalLoaded: searchService.data.length
+    });
+  } catch (error) {
+    // 업로드 파일 정리
+    try { fs.unlinkSync(uploadedPath); } catch (e) { /* ignore */ }
+
+    // 백업에서 복원 시도
+    if (fs.existsSync(backupPath) && !fs.existsSync(lodPath)) {
+      try {
+        fs.copyFileSync(backupPath, lodPath);
+        searchService.initialized = false;
+        await searchService.initialize();
+      } catch (e) { /* ignore */ }
+    }
+
+    res.status(500).json({ success: false, message: 'DB 업로드 실패: ' + error.message });
+  }
+});
+
+// LOD DB 백업 목록
+app.get('/api/lod/backups', (req, res) => {
+  try {
+    const fs = require('fs');
+    const lodDir = path.join(__dirname, '..', 'LOD_DB');
+    const backups = fs.readdirSync(lodDir)
+      .filter(f => f.startsWith('lod_backup_') && f.endsWith('.db'))
+      .map(f => {
+        const stat = fs.statSync(path.join(lodDir, f));
+        return {
+          name: f,
+          size_mb: (stat.size / 1024 / 1024).toFixed(2),
+          created: stat.mtime.toISOString()
+        };
+      })
+      .sort((a, b) => b.created.localeCompare(a.created));
+
+    res.json({ success: true, backups });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// LOD DB 백업 복원
+app.post('/api/lod/restore', async (req, res) => {
+  const fs = require('fs');
+  const { backup_name } = req.body;
+  if (!backup_name) return res.status(400).json({ success: false, message: 'backup_name 필요' });
+
+  const lodDir = path.join(__dirname, '..', 'LOD_DB');
+  const backupPath = path.join(lodDir, backup_name);
+  const lodPath = path.join(lodDir, 'lod.db');
+
+  // path traversal 방지
+  if (!backup_name.startsWith('lod_backup_') || backup_name.includes('..')) {
+    return res.status(400).json({ success: false, message: '잘못된 백업 파일명' });
+  }
+
+  if (!fs.existsSync(backupPath)) {
+    return res.status(404).json({ success: false, message: '백업 파일 없음' });
+  }
+
+  try {
+    fs.copyFileSync(backupPath, lodPath);
+
+    searchService.initialized = false;
+    searchService.db = null;
+    searchService.fuse = null;
+    searchService.data = [];
+    await searchService.initialize();
+
+    res.json({
+      success: true,
+      message: `${backup_name}에서 복원 완료`,
+      totalLoaded: searchService.data.length
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: '복원 실패: ' + error.message });
+  }
 });
 
 app.get('/health', (req, res) => {
