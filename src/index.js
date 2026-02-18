@@ -1023,19 +1023,24 @@ app.get('/api/admin/trade-volume', adminAuth, async (req, res) => {
 
 // ── 기능 토글 API ──────────────────────────────────────
 app.get('/api/admin/features', adminAuth, (req, res) => {
-  const toggleData = featureToggles.getAll();
-
-  // 방 이름 병합: party_rooms/trade_rooms에서 이름 가져오기
+  // party_rooms/trade_rooms에서 방 목록 + 이름 가져오기
   const partyRooms = partyService.listPartyRooms();
   const tradeRooms = tradeService.listTradeRooms();
-  const roomNames = {};
-  partyRooms.forEach(r => { if (r.room_name) roomNames[r.room_id] = r.room_name; });
-  tradeRooms.forEach(r => { if (r.room_name && !roomNames[r.room_id]) roomNames[r.room_id] = r.room_name; });
+  const dbRooms = {};
+  partyRooms.forEach(r => { dbRooms[r.room_id] = r.room_name || ''; });
+  tradeRooms.forEach(r => { if (!dbRooms[r.room_id]) dbRooms[r.room_id] = r.room_name || ''; });
 
-  // 이름이 비어있는 방에 DB 이름 적용
+  // DB에 있는 방을 토글에 자동 등록
+  for (const [roomId, roomName] of Object.entries(dbRooms)) {
+    featureToggles.trackRoom(roomId, roomName);
+  }
+
+  const toggleData = featureToggles.getAll();
+
+  // DB 이름으로 보강
   for (const [roomId, room] of Object.entries(toggleData.rooms)) {
-    if (!room.name && roomNames[roomId]) {
-      room.name = roomNames[roomId];
+    if (!room.name && dbRooms[roomId]) {
+      room.name = dbRooms[roomId];
     }
   }
 

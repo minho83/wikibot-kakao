@@ -86,10 +86,18 @@ function setRoomName(roomId, name) {
   save();
 }
 
-// 메시지 수신 시 방 자동 등록
-function trackRoom(roomId) {
-  if (!roomId || data.rooms[roomId]) return;
-  data.rooms[roomId] = { name: '', features: {} };
+// 방 자동 등록 (이름 옵션)
+function trackRoom(roomId, roomName) {
+  if (!roomId) return;
+  if (data.rooms[roomId]) {
+    // 이름이 비어있고 새 이름이 있으면 업데이트
+    if (!data.rooms[roomId].name && roomName) {
+      data.rooms[roomId].name = roomName;
+      save();
+    }
+    return;
+  }
+  data.rooms[roomId] = { name: roomName || '', features: {} };
   save();
 }
 
