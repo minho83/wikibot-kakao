@@ -79,13 +79,15 @@ class SearchService {
 
       // 기술 습득 조건 조인
       const actionResult = this.db.exec(`
-        SELECT NeedLevel, NeedGold, NeedItem, NeedSTR, NeedDEX, NeedINT, NeedWIS, NeedCON
+        SELECT NeedLevel, NeedGrade, NeedGold, NeedItem, NeedSTR, NeedDEX, NeedINT, NeedWIS, NeedCON
         FROM action_info WHERE ID = '${skill.name.replace(/'/g, "''")}'
       `);
 
       if (actionResult.length > 0 && actionResult[0].values.length > 0) {
         const actionInfo = this.rowToObject(actionResult[0]);
-        skill.needLevel = actionInfo.NeedLevel;
+        const grade = parseInt(actionInfo.NeedGrade) || 0;
+        const level = parseInt(actionInfo.NeedLevel) || 0;
+        skill.needTotalLevel = (grade * 100) + level;
         skill.needGold = actionInfo.NeedGold;
         skill.needItem = actionInfo.NeedItem;
         skill.needStr = actionInfo.NeedSTR;
@@ -114,13 +116,15 @@ class SearchService {
 
       // 마법 습득 조건 조인
       const actionResult = this.db.exec(`
-        SELECT NeedLevel, NeedGold, NeedItem, NeedSTR, NeedDEX, NeedINT, NeedWIS, NeedCON
+        SELECT NeedLevel, NeedGrade, NeedGold, NeedItem, NeedSTR, NeedDEX, NeedINT, NeedWIS, NeedCON
         FROM action_info WHERE ID = '${spell.name.replace(/'/g, "''")}'
       `);
 
       if (actionResult.length > 0 && actionResult[0].values.length > 0) {
         const actionInfo = this.rowToObject(actionResult[0]);
-        spell.needLevel = actionInfo.NeedLevel;
+        const grade = parseInt(actionInfo.NeedGrade) || 0;
+        const level = parseInt(actionInfo.NeedLevel) || 0;
+        spell.needTotalLevel = (grade * 100) + level;
         spell.needGold = actionInfo.NeedGold;
         spell.needItem = actionInfo.NeedItem;
         spell.needStr = actionInfo.NeedSTR;

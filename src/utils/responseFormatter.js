@@ -171,8 +171,8 @@ class ResponseFormatter {
 
     // 레벨, 골드
     let levelGold = [];
-    if (item.needLevel && item.needLevel !== '0' && item.needLevel !== '1') {
-      levelGold.push(`습득 토탈레벨: ${item.needLevel}`);
+    if (item.needTotalLevel && item.needTotalLevel > 1) {
+      levelGold.push(`습득 토탈레벨: ${item.needTotalLevel}`);
     }
     if (item.needGold && item.needGold !== '0') {
       levelGold.push(`골드: ${Number(item.needGold).toLocaleString()}`);

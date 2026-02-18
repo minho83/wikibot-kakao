@@ -185,7 +185,7 @@ app.post('/ask', async (req, res) => {
         // 마법 정보
         if (item.category === 'spell') {
           if (item.costMana) answer += `   MP소모: ${item.costMana.toLocaleString('ko-KR')}\n`;
-          if (item.needLevel) answer += `   습득 토탈레벨: ${item.needLevel}`;
+          if (item.needTotalLevel) answer += `   습득 토탈레벨: ${item.needTotalLevel}`;
           if (item.needGold) answer += ` | 비용: ${formatGold(item.needGold)}G`;
           answer += '\n';
           const stats = [];
@@ -200,7 +200,7 @@ app.post('/ask', async (req, res) => {
 
         // 기술 정보
         if (item.category === 'skill') {
-          if (item.needLevel) answer += `   습득 토탈레벨: ${item.needLevel}`;
+          if (item.needTotalLevel) answer += `   습득 토탈레벨: ${item.needTotalLevel}`;
           if (item.needGold) answer += ` | 비용: ${formatGold(item.needGold)}G`;
           answer += '\n';
           const stats = [];
@@ -327,7 +327,7 @@ app.post('/ask/skill', async (req, res) => {
 
         // 마법/스킬 정보
         if (item.costMana) answer += `   MP소모: ${item.costMana.toLocaleString('ko-KR')}\n`;
-        if (item.needLevel) answer += `   습득 토탈레벨: ${item.needLevel}`;
+        if (item.needTotalLevel) answer += `   습득 토탈레벨: ${item.needTotalLevel}`;
         if (item.needGold) answer += ` | 비용: ${formatGold(item.needGold)}G`;
         answer += '\n';
 
