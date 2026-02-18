@@ -64,10 +64,7 @@ class ResponseFormatter {
     // 직업, 레벨, 성별 (의상/모자만)
     let infoLine = [];
     if (item.job && item.job !== '공통') infoLine.push(`직업: ${item.job}`);
-    if (item.level && item.level !== '0') {
-      const lvl = parseInt(item.level);
-      infoLine.push(lvl >= 100 ? `토탈Lv.${item.level}` : `Lv.${item.level}`);
-    }
+    if (item.level && item.level !== '0') infoLine.push(`Lv.${item.level}`);
     if (['방어구'].includes(item.categoryName) && item.gender) {
       infoLine.push(item.gender);
     }
@@ -175,7 +172,7 @@ class ResponseFormatter {
     // 레벨, 골드
     let levelGold = [];
     if (item.needLevel && item.needLevel !== '0' && item.needLevel !== '1') {
-      levelGold.push(`습득 레벨: ${item.needLevel}`);
+      levelGold.push(`습득 토탈레벨: ${item.needLevel}`);
     }
     if (item.needGold && item.needGold !== '0') {
       levelGold.push(`골드: ${Number(item.needGold).toLocaleString()}`);
