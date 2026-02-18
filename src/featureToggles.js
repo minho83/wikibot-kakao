@@ -11,11 +11,22 @@ const DEFAULT_FEATURES = {
   '!파티': true,
 };
 
-let featureToggles = { ...DEFAULT_FEATURES };
+// 데이터 구조: { global: {...}, rooms: { roomId: { name, features } } }
+let data = { global: { ...DEFAULT_FEATURES }, rooms: {} };
+
+// 로드 (기존 flat 구조 자동 마이그레이션)
 try {
   if (fs.existsSync(TOGGLES_PATH)) {
     const saved = JSON.parse(fs.readFileSync(TOGGLES_PATH, 'utf-8'));
-    featureToggles = { ...DEFAULT_FEATURES, ...saved };
+    if (saved.global) {
+      // 새 구조
+      data.global = { ...DEFAULT_FEATURES, ...saved.global };
+      data.rooms = saved.rooms || {};
+    } else {
+      // 기존 flat 구조 → 마이그레이션
+      data.global = { ...DEFAULT_FEATURES, ...saved };
+      data.rooms = {};
+    }
   }
 } catch (e) {
   console.error('Failed to load feature toggles:', e.message);
@@ -23,27 +34,63 @@ try {
 
 function save() {
   try {
-    fs.writeFileSync(TOGGLES_PATH, JSON.stringify(featureToggles, null, 2));
+    fs.writeFileSync(TOGGLES_PATH, JSON.stringify(data, null, 2));
   } catch (e) {
     console.error('Failed to save toggles:', e.message);
   }
 }
 
 function getAll() {
-  return featureToggles;
+  return { global: data.global, rooms: data.rooms };
 }
 
-function isEnabled(command) {
-  return featureToggles[command] !== false;
+// 방 설정 우선, 없으면 글로벌 폴백
+function isEnabled(command, roomId) {
+  if (roomId && data.rooms[roomId] && data.rooms[roomId].features) {
+    const roomVal = data.rooms[roomId].features[command];
+    if (roomVal !== undefined) return roomVal;
+  }
+  return data.global[command] !== false;
 }
 
-function update(updates) {
+function updateGlobal(updates) {
   for (const [cmd, enabled] of Object.entries(updates)) {
-    if (cmd in featureToggles) {
-      featureToggles[cmd] = !!enabled;
+    if (cmd in data.global) {
+      data.global[cmd] = !!enabled;
     }
   }
   save();
 }
 
-module.exports = { getAll, isEnabled, update };
+function updateRoom(roomId, updates) {
+  if (!data.rooms[roomId]) {
+    data.rooms[roomId] = { name: '', features: {} };
+  }
+  for (const [cmd, val] of Object.entries(updates)) {
+    if (!(cmd in DEFAULT_FEATURES)) continue;
+    if (val === null || val === undefined) {
+      // null → 기본값으로 (삭제)
+      delete data.rooms[roomId].features[cmd];
+    } else {
+      data.rooms[roomId].features[cmd] = !!val;
+    }
+  }
+  save();
+}
+
+function setRoomName(roomId, name) {
+  if (!data.rooms[roomId]) {
+    data.rooms[roomId] = { name: '', features: {} };
+  }
+  data.rooms[roomId].name = name;
+  save();
+}
+
+// 메시지 수신 시 방 자동 등록
+function trackRoom(roomId) {
+  if (!roomId || data.rooms[roomId]) return;
+  data.rooms[roomId] = { name: '', features: {} };
+  save();
+}
+
+module.exports = { getAll, isEnabled, updateGlobal, updateRoom, setRoomName, trackRoom, DEFAULT_FEATURES };

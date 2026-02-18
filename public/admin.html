@@ -569,6 +569,81 @@
     transform: translateX(20px);
   }
 
+  /* 3-state toggle for per-room */
+  .tri-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .tri-toggle button {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    padding: 3px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .tri-toggle button.active-on { background: var(--success); color: white; }
+  .tri-toggle button.active-off { background: var(--danger); color: white; }
+  .tri-toggle button.active-default { background: var(--border); color: var(--text); }
+
+  /* Room section */
+  .room-block {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+  }
+
+  .room-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .room-name-input {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    width: 200px;
+  }
+
+  .room-name-input:hover { border-color: var(--border); }
+  .room-name-input:focus { outline: none; border-color: var(--accent); }
+
+  .room-id-label {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .room-features {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .room-feature-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
   @media (max-width: 768px) {
     .header { padding: 12px 16px; }
     .main { padding: 12px 16px; }
@@ -608,13 +683,16 @@
     <a href="/lod-admin.html" class="btn-lod">LOD DB 관리 &#x2192;</a>
   </div>
 
-  <!-- 봇 기능 토글 -->
+  <!-- 봇 기능 토글: 글로벌 기본값 -->
   <div class="feature-section" id="featureSection">
-    <h2>&#x2699; 봇 기능 관리</h2>
+    <h2>&#x2699; 봇 기능 관리 &#x2014; 기본값</h2>
     <div class="feature-list" id="featureList">
       <div style="color: var(--text-dim); font-size: 13px;">불러오는 중...</div>
     </div>
   </div>
+
+  <!-- 봇 기능 토글: 방 별 설정 -->
+  <div id="roomSections"></div>
 
   <!-- 파티 DB 관리 -->
   <div>
@@ -1170,21 +1248,28 @@ const CMD_LABELS = {
   '!파티': '파티',
 };
 
+let featureData = { global: {}, rooms: {} };
+
 async function loadFeatures() {
   try {
     const resp = await fetch('/api/admin/features', { headers: authHeaders() });
     const data = await resp.json();
-    if (data.success) renderFeatures(data.features);
+    if (data.success) {
+      featureData = { global: data.global, rooms: data.rooms || {} };
+      renderGlobalFeatures(data.global);
+      renderRoomSections(data.rooms || {}, data.global);
+    }
   } catch (err) {
     console.error('Feature load error:', err);
   }
 }
 
-function renderFeatures(features) {
+// ── 글로벌 기본값 ──
+function renderGlobalFeatures(global) {
   const container = document.getElementById('featureList');
   container.innerHTML = '';
 
-  Object.entries(features).forEach(([cmd, enabled]) => {
+  Object.entries(global).forEach(([cmd, enabled]) => {
     const div = document.createElement('div');
     div.className = 'feature-item' + (enabled ? '' : ' disabled');
 
@@ -1192,19 +1277,18 @@ function renderFeatures(features) {
     div.innerHTML = `
       <span class="cmd-name">${escapeHtml(cmd)}<br><span style="font-size:11px;font-weight:400;color:var(--text-dim)">${escapeHtml(label)}</span></span>
       <label class="toggle-switch">
-        <input type="checkbox" ${enabled ? 'checked' : ''} data-cmd="${escapeHtml(cmd)}">
+        <input type="checkbox" ${enabled ? 'checked' : ''}>
         <span class="toggle-slider"></span>
       </label>
     `;
 
     const checkbox = div.querySelector('input[type="checkbox"]');
-    checkbox.addEventListener('change', () => toggleFeature(cmd, checkbox.checked, div));
-
+    checkbox.addEventListener('change', () => toggleGlobal(cmd, checkbox.checked, div));
     container.appendChild(div);
   });
 }
 
-async function toggleFeature(cmd, enabled, itemEl) {
+async function toggleGlobal(cmd, enabled, itemEl) {
   try {
     const resp = await fetch('/api/admin/features', {
       method: 'PUT',
@@ -1213,8 +1297,10 @@ async function toggleFeature(cmd, enabled, itemEl) {
     });
     const data = await resp.json();
     if (data.success) {
+      featureData = { global: data.global, rooms: data.rooms || {} };
       itemEl.classList.toggle('disabled', !enabled);
-      showToast(`${cmd} ${enabled ? '활성화' : '비활성화'}`);
+      renderRoomSections(data.rooms || {}, data.global);
+      showToast(`기본값: ${cmd} ${enabled ? 'ON' : 'OFF'}`);
     } else {
       showToast('변경 실패', true);
       itemEl.querySelector('input').checked = !enabled;
@@ -1222,6 +1308,84 @@ async function toggleFeature(cmd, enabled, itemEl) {
   } catch (err) {
     showToast('서버 오류', true);
     itemEl.querySelector('input').checked = !enabled;
+  }
+}
+
+// ── 방 별 설정 ──
+function renderRoomSections(rooms, global) {
+  const container = document.getElementById('roomSections');
+  const entries = Object.entries(rooms);
+
+  if (entries.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  let html = '';
+  entries.forEach(([roomId, room]) => {
+    const displayName = room.name || `방 ${roomId}`;
+    html += `<div class="room-block" data-room="${escapeHtml(roomId)}">
+      <div class="room-header">
+        <input class="room-name-input" value="${escapeHtml(displayName)}"
+          data-room-id="${escapeHtml(roomId)}" placeholder="방 이름 입력"
+          onchange="saveRoomName('${escapeHtml(roomId)}', this.value)">
+        <span class="room-id-label">ID: ${escapeHtml(roomId)}</span>
+      </div>
+      <div class="room-features">`;
+
+    Object.keys(global).forEach(cmd => {
+      const roomVal = (room.features && room.features[cmd] !== undefined) ? room.features[cmd] : null;
+      const globalVal = global[cmd];
+      const effectiveVal = roomVal !== null ? roomVal : globalVal;
+      const stateLabel = roomVal === null ? `기본(${globalVal ? 'ON' : 'OFF'})` : (roomVal ? 'ON' : 'OFF');
+
+      html += `<div class="room-feature-item">
+        <span style="font-size:12px;font-weight:600">${escapeHtml(cmd)}</span>
+        <div class="tri-toggle">
+          <button class="${roomVal === true ? 'active-on' : ''}" onclick="setRoomFeature('${escapeHtml(roomId)}','${escapeHtml(cmd)}',true)" title="강제 ON">ON</button>
+          <button class="${roomVal === null ? 'active-default' : ''}" onclick="setRoomFeature('${escapeHtml(roomId)}','${escapeHtml(cmd)}',null)" title="기본값 따름">기본</button>
+          <button class="${roomVal === false ? 'active-off' : ''}" onclick="setRoomFeature('${escapeHtml(roomId)}','${escapeHtml(cmd)}',false)" title="강제 OFF">OFF</button>
+        </div>
+      </div>`;
+    });
+
+    html += `</div></div>`;
+  });
+
+  container.innerHTML = html;
+}
+
+async function setRoomFeature(roomId, cmd, val) {
+  try {
+    const resp = await fetch('/api/admin/features/rooms/' + encodeURIComponent(roomId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ [cmd]: val })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      featureData = { global: data.global, rooms: data.rooms || {} };
+      renderRoomSections(data.rooms || {}, data.global);
+      const label = val === null ? '기본값' : (val ? 'ON' : 'OFF');
+      showToast(`${cmd} → ${label}`);
+    } else {
+      showToast('변경 실패', true);
+    }
+  } catch (err) {
+    showToast('서버 오류', true);
+  }
+}
+
+async function saveRoomName(roomId, name) {
+  try {
+    await fetch('/api/admin/features/rooms/' + encodeURIComponent(roomId) + '/name', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ name })
+    });
+    showToast('방 이름 저장');
+  } catch (err) {
+    showToast('서버 오류', true);
   }
 }
 

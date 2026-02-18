@@ -103,6 +103,9 @@ router.post('/kakao', async (req, res) => {
 
     const parsedMessage = messageParser.parse(message);
 
+    // 방 자동 등록
+    if (room_id) featureToggles.trackRoom(room_id);
+
     if (!parsedMessage.isCommand) {
       return res.json({
         success: true,
@@ -114,7 +117,7 @@ router.post('/kakao', async (req, res) => {
     let result;
 
     // 기능 토글 체크 (!도움말 제외)
-    if (parsedMessage.command !== '!도움말' && !featureToggles.isEnabled(parsedMessage.command)) {
+    if (parsedMessage.command !== '!도움말' && !featureToggles.isEnabled(parsedMessage.command, room_id)) {
       return res.json({
         success: true,
         message: `${parsedMessage.command} 기능은 현재 비활성화되어 있습니다.`,

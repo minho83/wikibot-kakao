@@ -1023,12 +1023,39 @@ app.get('/api/admin/trade-volume', adminAuth, async (req, res) => {
 
 // ── 기능 토글 API ──────────────────────────────────────
 app.get('/api/admin/features', adminAuth, (req, res) => {
-  res.json({ success: true, features: featureToggles.getAll() });
+  const toggleData = featureToggles.getAll();
+
+  // 방 이름 병합: party_rooms/trade_rooms에서 이름 가져오기
+  const partyRooms = partyService.listPartyRooms();
+  const tradeRooms = tradeService.listTradeRooms();
+  const roomNames = {};
+  partyRooms.forEach(r => { if (r.room_name) roomNames[r.room_id] = r.room_name; });
+  tradeRooms.forEach(r => { if (r.room_name && !roomNames[r.room_id]) roomNames[r.room_id] = r.room_name; });
+
+  // 이름이 비어있는 방에 DB 이름 적용
+  for (const [roomId, room] of Object.entries(toggleData.rooms)) {
+    if (!room.name && roomNames[roomId]) {
+      room.name = roomNames[roomId];
+    }
+  }
+
+  res.json({ success: true, ...toggleData });
 });
 
 app.put('/api/admin/features', adminAuth, (req, res) => {
-  featureToggles.update(req.body);
-  res.json({ success: true, features: featureToggles.getAll() });
+  featureToggles.updateGlobal(req.body);
+  res.json({ success: true, ...featureToggles.getAll() });
+});
+
+app.put('/api/admin/features/rooms/:roomId', adminAuth, (req, res) => {
+  featureToggles.updateRoom(req.params.roomId, req.body);
+  res.json({ success: true, ...featureToggles.getAll() });
+});
+
+app.put('/api/admin/features/rooms/:roomId/name', adminAuth, (req, res) => {
+  const { name } = req.body;
+  featureToggles.setRoomName(req.params.roomId, name || '');
+  res.json({ success: true, ...featureToggles.getAll() });
 });
 
 // ── 파티 관리 API (admin) ──────────────────────────────
