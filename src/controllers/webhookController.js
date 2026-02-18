@@ -4,6 +4,7 @@ const { SearchService } = require('../services/searchService');
 const { CommunityService } = require('../services/communityService');
 const { NoticeService } = require('../services/noticeService');
 const { ResponseFormatter } = require('../utils/responseFormatter');
+const featureToggles = require('../featureToggles');
 
 const router = express.Router();
 const messageParser = new MessageParser();
@@ -111,6 +112,15 @@ router.post('/kakao', async (req, res) => {
     }
 
     let result;
+
+    // 기능 토글 체크 (!도움말 제외)
+    if (parsedMessage.command !== '!도움말' && !featureToggles.isEnabled(parsedMessage.command)) {
+      return res.json({
+        success: true,
+        message: `${parsedMessage.command} 기능은 현재 비활성화되어 있습니다.`,
+        response_type: 'text'
+      });
+    }
 
     switch (parsedMessage.command) {
       case '!검색':

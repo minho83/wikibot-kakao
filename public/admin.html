@@ -485,11 +485,96 @@
 
   .btn-lod:hover { opacity: 0.85; }
 
+  /* Feature Toggle Section */
+  .feature-section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+
+  .feature-section h2 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .feature-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+  }
+
+  .feature-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    transition: border-color 0.15s;
+  }
+
+  .feature-item.disabled { border-color: var(--danger); opacity: 0.7; }
+
+  .feature-item .cmd-name {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .toggle-switch {
+    position: relative;
+    width: 42px;
+    height: 22px;
+    flex-shrink: 0;
+  }
+
+  .toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #444;
+    border-radius: 22px;
+    transition: background 0.2s;
+  }
+
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    left: 3px;
+    bottom: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s;
+  }
+
+  .toggle-switch input:checked + .toggle-slider {
+    background: var(--success);
+  }
+
+  .toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(20px);
+  }
+
   @media (max-width: 768px) {
     .header { padding: 12px 16px; }
     .main { padding: 12px 16px; }
     .form-grid { grid-template-columns: 1fr; }
     .modal { padding: 16px; }
+    .feature-list { grid-template-columns: 1fr 1fr; }
   }
 </style>
 </head>
@@ -521,6 +606,14 @@
   <div class="shortcut-banner">
     <div class="banner-text">&#x1F4BE; <strong>LOD 아이템 DB 관리</strong> &mdash; DB 업로드, 백업/복원, 아이템/기술/마법 브라우저</div>
     <a href="/lod-admin.html" class="btn-lod">LOD DB 관리 &#x2192;</a>
+  </div>
+
+  <!-- 봇 기능 토글 -->
+  <div class="feature-section" id="featureSection">
+    <h2>&#x2699; 봇 기능 관리</h2>
+    <div class="feature-list" id="featureList">
+      <div style="color: var(--text-dim); font-size: 13px;">불러오는 중...</div>
+    </div>
   </div>
 
   <!-- 파티 DB 관리 -->
@@ -1067,12 +1160,78 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeModal();
 });
 
+// ── Feature Toggles ──
+const CMD_LABELS = {
+  '!검색': '검색',
+  '!통계': '통계',
+  '!현자': '현자 (게시판)',
+  '!공지': '공지사항',
+  '!업데이트': '업데이트',
+  '!파티': '파티',
+};
+
+async function loadFeatures() {
+  try {
+    const resp = await fetch('/api/admin/features', { headers: authHeaders() });
+    const data = await resp.json();
+    if (data.success) renderFeatures(data.features);
+  } catch (err) {
+    console.error('Feature load error:', err);
+  }
+}
+
+function renderFeatures(features) {
+  const container = document.getElementById('featureList');
+  container.innerHTML = '';
+
+  Object.entries(features).forEach(([cmd, enabled]) => {
+    const div = document.createElement('div');
+    div.className = 'feature-item' + (enabled ? '' : ' disabled');
+
+    const label = CMD_LABELS[cmd] || cmd;
+    div.innerHTML = `
+      <span class="cmd-name">${escapeHtml(cmd)}<br><span style="font-size:11px;font-weight:400;color:var(--text-dim)">${escapeHtml(label)}</span></span>
+      <label class="toggle-switch">
+        <input type="checkbox" ${enabled ? 'checked' : ''} data-cmd="${escapeHtml(cmd)}">
+        <span class="toggle-slider"></span>
+      </label>
+    `;
+
+    const checkbox = div.querySelector('input[type="checkbox"]');
+    checkbox.addEventListener('change', () => toggleFeature(cmd, checkbox.checked, div));
+
+    container.appendChild(div);
+  });
+}
+
+async function toggleFeature(cmd, enabled, itemEl) {
+  try {
+    const resp = await fetch('/api/admin/features', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ [cmd]: enabled })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      itemEl.classList.toggle('disabled', !enabled);
+      showToast(`${cmd} ${enabled ? '활성화' : '비활성화'}`);
+    } else {
+      showToast('변경 실패', true);
+      itemEl.querySelector('input').checked = !enabled;
+    }
+  } catch (err) {
+    showToast('서버 오류', true);
+    itemEl.querySelector('input').checked = !enabled;
+  }
+}
+
 // Init
 (async () => {
   try {
     await checkAuth();
     updateDateDisplay();
     loadParties();
+    loadFeatures();
   } catch (e) {
     console.error('Auth failed:', e);
   }

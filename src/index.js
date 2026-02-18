@@ -3,6 +3,8 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const crypto = require('crypto');
 const multer = require('multer');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 const webhookController = require('./controllers/webhookController');
@@ -44,6 +46,8 @@ function logActivity(event) {
     activityLog.pop();
   }
 }
+
+const featureToggles = require('./featureToggles');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1016,6 +1020,16 @@ app.get('/api/admin/trade-volume', adminAuth, async (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
+});
+
+// ── 기능 토글 API ──────────────────────────────────────
+app.get('/api/admin/features', adminAuth, (req, res) => {
+  res.json({ success: true, features: featureToggles.getAll() });
+});
+
+app.put('/api/admin/features', adminAuth, (req, res) => {
+  featureToggles.update(req.body);
+  res.json({ success: true, features: featureToggles.getAll() });
 });
 
 // ── 파티 관리 API (admin) ──────────────────────────────
