@@ -448,6 +448,43 @@
 
   .raw-msg.expanded { max-height: none; }
 
+  .shortcut-banner {
+    background: linear-gradient(135deg, #1e2233 0%, #252a3a 100%);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 24px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .shortcut-banner .banner-text {
+    font-size: 14px;
+    color: var(--text-dim);
+  }
+
+  .shortcut-banner .banner-text strong {
+    color: var(--text);
+  }
+
+  .btn-lod {
+    background: linear-gradient(135deg, var(--accent), #cb69c1);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: opacity 0.15s;
+  }
+
+  .btn-lod:hover { opacity: 0.85; }
+
   @media (max-width: 768px) {
     .header { padding: 12px 16px; }
     .main { padding: 12px 16px; }
@@ -480,6 +517,12 @@
 </div>
 
 <div class="main">
+  <!-- LOD DB 관리 바로가기 -->
+  <div class="shortcut-banner">
+    <div class="banner-text">&#x1F4BE; <strong>LOD 아이템 DB 관리</strong> &mdash; DB 업로드, 백업/복원, 아이템/기술/마법 브라우저</div>
+    <a href="/lod-admin.html" class="btn-lod">LOD DB 관리 &#x2192;</a>
+  </div>
+
   <!-- 파티 DB 관리 -->
   <div>
   <div class="stats-row" id="statsRow"></div>
