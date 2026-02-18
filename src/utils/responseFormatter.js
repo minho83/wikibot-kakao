@@ -64,7 +64,10 @@ class ResponseFormatter {
     // 직업, 레벨, 성별 (의상/모자만)
     let infoLine = [];
     if (item.job && item.job !== '공통') infoLine.push(`직업: ${item.job}`);
-    if (item.level && item.level !== '0') infoLine.push(`Lv.${item.level}`);
+    if (item.level && item.level !== '0') {
+      const lvl = parseInt(item.level);
+      infoLine.push(lvl >= 100 ? `토탈Lv.${item.level}` : `Lv.${item.level}`);
+    }
     if (['방어구'].includes(item.categoryName) && item.gender) {
       infoLine.push(item.gender);
     }

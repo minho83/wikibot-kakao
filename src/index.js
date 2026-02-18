@@ -159,7 +159,11 @@ app.post('/ask', async (req, res) => {
 
         // 아이템 정보
         if (item.category === 'item') {
-          if (item.level) answer += `   레벨: ${item.level}`;
+          if (item.level) {
+            const lvl = parseInt(item.level);
+            const lvlLabel = lvl >= 100 ? '토탈레벨' : '레벨';
+            answer += `   ${lvlLabel}: ${item.level}`;
+          }
           if (item.job) answer += ` | 직업: ${item.job}\n`;
           if (item.ac != null && item.ac !== 0) answer += `   AC: ${item.ac}`;
           if (item.magicDefense) answer += ` | 마방: ${item.magicDefense}`;
@@ -258,7 +262,11 @@ app.post('/ask/item', async (req, res) => {
         const title = item.displayName || item.name || '제목 없음';
         answer += `${idx + 1}. [${item.categoryName || '아이템'}] ${title}\n`;
 
-        if (item.level) answer += `   레벨: ${item.level}`;
+        if (item.level) {
+          const lvl = parseInt(item.level);
+          const lvlLabel = lvl >= 100 ? '토탈레벨' : '레벨';
+          answer += `   ${lvlLabel}: ${item.level}`;
+        }
         if (item.job) answer += ` | 직업: ${item.job}\n`;
         if (item.ac != null && item.ac !== 0) answer += `   AC: ${item.ac}`;
         if (item.magicDefense) answer += ` | 마방: ${item.magicDefense}`;
