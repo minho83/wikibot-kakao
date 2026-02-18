@@ -116,13 +116,9 @@ router.post('/kakao', async (req, res) => {
 
     let result;
 
-    // 기능 토글 체크 (!도움말 제외)
+    // 기능 토글 체크 (!도움말 제외) — 비활성 시 무응답
     if (parsedMessage.command !== '!도움말' && !featureToggles.isEnabled(parsedMessage.command, room_id)) {
-      return res.json({
-        success: true,
-        message: `${parsedMessage.command} 기능은 현재 비활성화되어 있습니다.`,
-        response_type: 'text'
-      });
+      return res.json({ success: true });
     }
 
     switch (parsedMessage.command) {
