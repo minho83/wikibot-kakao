@@ -51,6 +51,15 @@ for db in nickname.db notice.db trade.db party.db; do
     fi
 done
 
+# feature-toggles.json → data 디렉토리로 마이그레이션 (1회성)
+if [ ! -f "$DB_DIR/feature-toggles.json" ]; then
+    # 기존 컨테이너에서 추출 시도
+    docker cp "$CONTAINER_NAME:/app/feature-toggles.json" "$DB_DIR/feature-toggles.json" 2>/dev/null
+    if [ -f "$DB_DIR/feature-toggles.json" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] feature-toggles.json 마이그레이션 완료" >> "$LOG_FILE"
+    fi
+fi
+
 # pull + submodule update
 git pull origin master >> "$LOG_FILE" 2>&1
 git submodule update --init --recursive >> "$LOG_FILE" 2>&1
@@ -69,6 +78,11 @@ for db in nickname.db notice.db trade.db party.db; do
         touch "$DB_DIR/$db"
     fi
 done
+
+# feature-toggles.json 없으면 기본값 생성
+if [ ! -f "$DB_DIR/feature-toggles.json" ]; then
+    echo '{}' > "$DB_DIR/feature-toggles.json"
+fi
 
 # 배포 전 DB 백업 (0바이트가 아닌 경우만)
 BACKUP_DIR="$DB_DIR/backup"
@@ -91,6 +105,7 @@ docker run -d \
     -v "$DB_DIR/notice.db:/app/notice.db" \
     -v "$DB_DIR/trade.db:/app/trade.db" \
     -v "$DB_DIR/party.db:/app/party.db" \
+    -v "$DB_DIR/feature-toggles.json:/app/feature-toggles.json" \
     -v "$REPO_DIR/LOD_DB:/app/LOD_DB" \
     ${ENV_FILE:+--env-file "$ENV_FILE"} \
     "$IMAGE_NAME" >> "$LOG_FILE" 2>&1
