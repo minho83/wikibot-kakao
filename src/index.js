@@ -1306,8 +1306,80 @@ const lodUpload = multer({
   }
 });
 
+// LOD DB 내용 조회 API (아이템/기술/마법 브라우징)
+app.get('/api/lod/items', adminAuth, async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { page = 1, limit = 50, search, type, job } = req.query;
+    const p = Math.max(1, parseInt(page));
+    const l = Math.min(100, Math.max(1, parseInt(limit) || 50));
+
+    let items = searchService.data.filter(d => d.category === 'item');
+    if (search) {
+      const q = search.toLowerCase();
+      items = items.filter(i => (i.name || '').toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q));
+    }
+    if (type) items = items.filter(i => i.type === type);
+    if (job) items = items.filter(i => i.job === job);
+
+    const total = items.length;
+    const offset = (p - 1) * l;
+    const paged = items.slice(offset, offset + l);
+
+    res.json({ success: true, total, page: p, limit: l, pages: Math.ceil(total / l), results: paged });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.get('/api/lod/skills', adminAuth, async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { page = 1, limit = 50, search } = req.query;
+    const p = Math.max(1, parseInt(page));
+    const l = Math.min(100, Math.max(1, parseInt(limit) || 50));
+
+    let items = searchService.data.filter(d => d.category === 'skill');
+    if (search) {
+      const q = search.toLowerCase();
+      items = items.filter(i => (i.name || '').toLowerCase().includes(q) || (i.displayName || '').toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q));
+    }
+
+    const total = items.length;
+    const offset = (p - 1) * l;
+    const paged = items.slice(offset, offset + l);
+
+    res.json({ success: true, total, page: p, limit: l, pages: Math.ceil(total / l), results: paged });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.get('/api/lod/spells', adminAuth, async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { page = 1, limit = 50, search } = req.query;
+    const p = Math.max(1, parseInt(page));
+    const l = Math.min(100, Math.max(1, parseInt(limit) || 50));
+
+    let items = searchService.data.filter(d => d.category === 'spell');
+    if (search) {
+      const q = search.toLowerCase();
+      items = items.filter(i => (i.name || '').toLowerCase().includes(q) || (i.displayName || '').toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q));
+    }
+
+    const total = items.length;
+    const offset = (p - 1) * l;
+    const paged = items.slice(offset, offset + l);
+
+    res.json({ success: true, total, page: p, limit: l, pages: Math.ceil(total / l), results: paged });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // LOD DB 정보 조회
-app.get('/api/lod/info', async (req, res) => {
+app.get('/api/lod/info', adminAuth, async (req, res) => {
   try {
     const fs = require('fs');
     const lodPath = path.join(__dirname, '..', 'LOD_DB', 'lod.db');
@@ -1337,7 +1409,7 @@ app.get('/api/lod/info', async (req, res) => {
 });
 
 // LOD DB 업로드 및 교체
-app.post('/api/lod/upload', lodUpload.single('dbfile'), async (req, res) => {
+app.post('/api/lod/upload', adminAuth, lodUpload.single('dbfile'), async (req, res) => {
   const fs = require('fs');
 
   if (!req.file) {
@@ -1430,7 +1502,7 @@ app.post('/api/lod/upload', lodUpload.single('dbfile'), async (req, res) => {
 });
 
 // LOD DB 백업 목록
-app.get('/api/lod/backups', (req, res) => {
+app.get('/api/lod/backups', adminAuth, (req, res) => {
   try {
     const fs = require('fs');
     const lodDir = path.join(__dirname, '..', 'LOD_DB');
@@ -1453,7 +1525,7 @@ app.get('/api/lod/backups', (req, res) => {
 });
 
 // LOD DB 백업 복원
-app.post('/api/lod/restore', async (req, res) => {
+app.post('/api/lod/restore', adminAuth, async (req, res) => {
   const fs = require('fs');
   const { backup_name } = req.body;
   if (!backup_name) return res.status(400).json({ success: false, message: 'backup_name 필요' });

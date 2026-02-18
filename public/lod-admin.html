@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LOD DB 관리</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --card-hover: #222633;
+    --border: #2a2e3d;
+    --text: #e1e4ed;
+    --text-dim: #8b90a0;
+    --accent: #6c72cb;
+    --danger: #e74c3c;
+    --success: #27ae60;
+    --warning: #f39c12;
+  }
+
+  body {
+    font-family: 'Segoe UI', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #1a1d27 0%, #252a3a 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-icon {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, var(--accent), #cb69c1);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+
+  .logo h1 { font-size: 18px; font-weight: 700; }
+
+  .nav-links {
+    display: flex;
+    gap: 12px;
+  }
+
+  .back-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 13px;
+  }
+
+  .back-link:hover { text-decoration: underline; }
+
+  .main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px 24px;
+  }
+
+  .btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.15s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  .btn-primary:hover { opacity: 0.85; }
+
+  .btn-danger {
+    background: transparent;
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+
+  .btn-danger:hover { background: rgba(231,76,60,0.15); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text);
+  }
+
+  .btn-ghost:hover { background: var(--card-hover); }
+
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+  /* Section card */
+  .section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .section-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .section-title .section-icon {
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, var(--accent), #cb69c1);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+
+  /* Info chips */
+  .info-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .info-chip {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  .info-chip strong { color: var(--accent); }
+
+  /* Upload */
+  .upload-area {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+    transition: all 0.2s;
+    cursor: pointer;
+    margin-bottom: 12px;
+  }
+
+  .upload-area:hover, .upload-area.dragover {
+    border-color: var(--accent);
+    background: rgba(108,114,203,0.05);
+  }
+
+  .upload-area input[type="file"] { display: none; }
+  .upload-area .upload-icon { font-size: 32px; margin-bottom: 8px; }
+  .upload-area .upload-text { color: var(--text-dim); font-size: 13px; }
+  .upload-area .upload-filename {
+    color: var(--accent);
+    font-weight: 600;
+    margin-top: 6px;
+  }
+
+  .upload-progress {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    display: none;
+  }
+
+  .upload-progress .bar {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.3s;
+  }
+
+  /* Backup */
+  .backup-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+
+  .backup-item .backup-info { color: var(--text-dim); }
+
+  /* Data browser tabs */
+  .tab-row {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+  }
+
+  .tab-btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.15s;
+  }
+
+  .tab-btn:hover { background: var(--card-hover); color: var(--text); }
+  .tab-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+  /* Toolbar */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  .toolbar input, .toolbar select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+
+  .toolbar input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .toolbar label {
+    font-size: 13px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* Table */
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  thead th {
+    background: var(--card);
+    padding: 10px 8px;
+    text-align: left;
+    font-weight: 600;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+
+  tbody tr:hover { background: var(--card-hover); }
+
+  td {
+    padding: 8px;
+    vertical-align: top;
+  }
+
+  .text-dim { color: var(--text-dim); }
+  .text-accent { color: var(--accent); }
+
+  .stat-badge {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+    margin: 1px;
+  }
+
+  .stat-badge.positive { background: rgba(39,174,96,0.15); color: var(--success); }
+  .stat-badge.negative { background: rgba(231,76,60,0.15); color: var(--danger); }
+  .stat-badge.neutral { background: rgba(108,114,203,0.15); color: var(--accent); }
+
+  .desc-cell {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .desc-cell:hover {
+    white-space: normal;
+    overflow: visible;
+  }
+
+  /* Pagination */
+  .pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 16px;
+  }
+
+  .pagination button {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+
+  .pagination button:hover { background: var(--card-hover); }
+  .pagination button:disabled { opacity: 0.3; cursor: default; }
+  .pagination button.active { background: var(--accent); border-color: var(--accent); color: white; }
+  .page-info { color: var(--text-dim); font-size: 13px; }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--success);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    z-index: 300;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.2s;
+  }
+
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.error { background: var(--danger); }
+
+  /* Grid layout for top sections */
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  @media (max-width: 900px) {
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 768px) {
+    .header { padding: 12px 16px; }
+    .main { padding: 12px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo">
+      <div class="logo-icon">&#x1F4BE;</div>
+      <h1>LOD DB 관리</h1>
+    </div>
+    <div class="nav-links">
+      <a href="/" class="back-link">&#x2190; 빈자리 뷰어</a>
+      <a href="/admin.html" class="back-link">&#x2699; 파티 관리</a>
+      <a href="/monitor.html" class="back-link">&#x1F4CA; 모니터링</a>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <!-- DB 정보 + 업로드 (2컬럼) -->
+  <div class="grid-2">
+    <div class="section">
+      <div class="section-title">
+        <div class="section-icon">&#x1F4BE;</div>
+        현재 DB 정보
+      </div>
+      <div class="info-row" id="lodInfoRow">
+        <div class="info-chip">불러오는 중...</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">
+        <div class="section-icon">&#x2B06;</div>
+        DB 업로드
+      </div>
+      <div class="upload-area" id="uploadArea" onclick="document.getElementById('dbFileInput').click()">
+        <div class="upload-icon">&#x1F4C1;</div>
+        <div>클릭하거나 파일을 드래그하세요</div>
+        <div class="upload-text">.db / .sqlite 파일 (최대 50MB)</div>
+        <div class="upload-filename" id="uploadFilename"></div>
+        <input type="file" id="dbFileInput" accept=".db,.sqlite,.sqlite3" onchange="onFileSelected(this)">
+      </div>
+      <div class="upload-progress" id="uploadProgress">
+        <div class="bar" id="uploadBar"></div>
+      </div>
+      <button class="btn btn-primary" id="uploadBtn" onclick="uploadDb()" disabled>업로드 및 적용</button>
+      <span id="uploadStatus" style="margin-left:12px; font-size:13px; color:var(--text-dim);"></span>
+    </div>
+  </div>
+
+  <!-- 백업 목록 -->
+  <div class="section">
+    <div class="section-title">
+      <div class="section-icon">&#x1F4CB;</div>
+      백업 목록
+    </div>
+    <div id="backupList">
+      <div style="color:var(--text-dim); font-size:13px;">불러오는 중...</div>
+    </div>
+  </div>
+
+  <!-- DB 내용 브라우저 -->
+  <div class="section">
+    <div class="section-title">
+      <div class="section-icon">&#x1F50D;</div>
+      DB 내용 브라우저
+    </div>
+
+    <div class="tab-row">
+      <button class="tab-btn active" onclick="switchDataTab('items', this)">아이템</button>
+      <button class="tab-btn" onclick="switchDataTab('skills', this)">기술</button>
+      <button class="tab-btn" onclick="switchDataTab('spells', this)">마법</button>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" id="searchInput" placeholder="이름 또는 설명 검색..." style="width:220px;" onkeydown="if(event.key==='Enter')searchData()">
+      <button class="btn btn-primary btn-sm" onclick="searchData()">검색</button>
+      <button class="btn btn-ghost btn-sm" onclick="clearSearch()">초기화</button>
+      <div id="filterArea"></div>
+      <div style="flex:1"></div>
+      <span class="page-info" id="totalInfo"></span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead id="dataHead"></thead>
+        <tbody id="dataBody">
+          <tr><td colspan="10" style="text-align:center; padding:40px; color:var(--text-dim);">로딩 중...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pagination" id="pagination"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let adminToken = localStorage.getItem('adminToken') || '';
+let currentDataTab = 'items';
+let currentPage = 1;
+let currentSearch = '';
+
+// ── 인증 ──
+async function checkAuth() {
+  if (!adminToken) {
+    try {
+      const resp = await fetch('/api/admin/verify');
+      const data = await resp.json();
+      if (data.success) { adminToken = 'no-auth'; return; }
+    } catch {}
+    return await doLogin();
+  }
+  try {
+    const resp = await fetch('/api/admin/verify', {
+      headers: { 'Authorization': 'Bearer ' + adminToken }
+    });
+    if (!resp.ok) {
+      adminToken = '';
+      localStorage.removeItem('adminToken');
+      return await doLogin();
+    }
+  } catch {
+    return await doLogin();
+  }
+}
+
+async function doLogin() {
+  const pw = prompt('관리자 비밀번호를 입력하세요:');
+  if (!pw) {
+    document.body.innerHTML = '<div style="text-align:center;padding:100px;color:#8b90a0;font-size:16px;">인증이 필요합니다. 새로고침하여 다시 시도하세요.</div>';
+    throw new Error('auth_cancelled');
+  }
+  try {
+    const resp = await fetch('/api/admin/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    });
+    const data = await resp.json();
+    if (data.success && data.token) {
+      adminToken = data.token;
+      localStorage.setItem('adminToken', adminToken);
+    } else {
+      alert(data.message || '인증 실패');
+      return await doLogin();
+    }
+  } catch (e) {
+    if (e.message === 'auth_cancelled') throw e;
+    alert('서버 연결 실패');
+    throw e;
+  }
+}
+
+function authHeaders() {
+  return { 'Authorization': 'Bearer ' + adminToken };
+}
+
+// ── DB 정보 ──
+async function loadLodInfo() {
+  try {
+    const resp = await fetch('/api/lod/info', { headers: authHeaders() });
+    const data = await resp.json();
+    if (!data.success) return;
+
+    let html = '';
+    if (data.file && !data.file.error) {
+      html += `<div class="info-chip">파일 크기: <strong>${data.file.size_mb} MB</strong></div>`;
+      html += `<div class="info-chip">수정일: <strong>${new Date(data.file.modified).toLocaleString('ko-KR')}</strong></div>`;
+    }
+    if (data.data) {
+      Object.entries(data.data).forEach(([key, val]) => {
+        html += `<div class="info-chip">${key}: <strong>${val.toLocaleString()}</strong></div>`;
+      });
+    }
+    document.getElementById('lodInfoRow').innerHTML = html || '<div class="info-chip">DB 없음</div>';
+  } catch {
+    document.getElementById('lodInfoRow').innerHTML = '<div class="info-chip" style="color:var(--danger);">로드 실패</div>';
+  }
+}
+
+// ── 업로드 ──
+let selectedFile = null;
+
+function onFileSelected(input) {
+  if (input.files && input.files[0]) {
+    selectedFile = input.files[0];
+    document.getElementById('uploadFilename').textContent = selectedFile.name + ' (' + (selectedFile.size / 1024 / 1024).toFixed(2) + ' MB)';
+    document.getElementById('uploadBtn').disabled = false;
+  }
+}
+
+const uploadArea = document.getElementById('uploadArea');
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadArea.classList.remove('dragover');
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+    const file = e.dataTransfer.files[0];
+    if (file.name.endsWith('.db') || file.name.endsWith('.sqlite') || file.name.endsWith('.sqlite3')) {
+      selectedFile = file;
+      document.getElementById('dbFileInput').files = e.dataTransfer.files;
+      document.getElementById('uploadFilename').textContent = file.name + ' (' + (file.size / 1024 / 1024).toFixed(2) + ' MB)';
+      document.getElementById('uploadBtn').disabled = false;
+    } else {
+      showToast('.db 또는 .sqlite 파일만 가능합니다.', true);
+    }
+  }
+});
+
+async function uploadDb() {
+  if (!selectedFile) return;
+  if (!confirm('현재 DB를 교체합니다. 기존 DB는 자동 백업됩니다.\n계속하시겠습니까?')) return;
+
+  const formData = new FormData();
+  formData.append('dbfile', selectedFile);
+
+  const progressEl = document.getElementById('uploadProgress');
+  const barEl = document.getElementById('uploadBar');
+  const statusEl = document.getElementById('uploadStatus');
+  const btn = document.getElementById('uploadBtn');
+
+  progressEl.style.display = 'block';
+  barEl.style.width = '0%';
+  btn.disabled = true;
+  statusEl.textContent = '업로드 중...';
+
+  try {
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener('progress', e => {
+      if (e.lengthComputable) {
+        barEl.style.width = Math.round(e.loaded / e.total * 100) + '%';
+      }
+    });
+
+    const result = await new Promise((resolve, reject) => {
+      xhr.onload = () => {
+        try { resolve(JSON.parse(xhr.responseText)); }
+        catch { reject(new Error('응답 파싱 실패')); }
+      };
+      xhr.onerror = () => reject(new Error('네트워크 오류'));
+      xhr.open('POST', '/api/lod/upload');
+      xhr.setRequestHeader('Authorization', 'Bearer ' + adminToken);
+      xhr.send(formData);
+    });
+
+    if (result.success) {
+      barEl.style.width = '100%';
+      statusEl.textContent = '';
+      let msg = 'DB 업데이트 완료!';
+      if (result.counts) {
+        msg += ` (아이템: ${result.counts.items}, 스킬: ${result.counts.skills}, 마법: ${result.counts.spells})`;
+      }
+      showToast(msg);
+      loadLodInfo();
+      loadBackups();
+      loadDataTab();
+    } else {
+      showToast('업로드 실패: ' + result.message, true);
+      statusEl.textContent = result.message;
+    }
+  } catch (err) {
+    showToast('업로드 오류: ' + err.message, true);
+    statusEl.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    selectedFile = null;
+    document.getElementById('uploadFilename').textContent = '';
+    document.getElementById('dbFileInput').value = '';
+    setTimeout(() => { progressEl.style.display = 'none'; }, 2000);
+  }
+}
+
+// ── 백업 ──
+async function loadBackups() {
+  try {
+    const resp = await fetch('/api/lod/backups', { headers: authHeaders() });
+    const data = await resp.json();
+    const list = document.getElementById('backupList');
+
+    if (!data.success || !data.backups || data.backups.length === 0) {
+      list.innerHTML = '<div style="color:var(--text-dim); font-size:13px;">백업 없음</div>';
+      return;
+    }
+
+    list.innerHTML = data.backups.map(b => `
+      <div class="backup-item">
+        <div>
+          <strong>${escapeHtml(b.name)}</strong>
+          <span class="backup-info"> | ${b.size_mb} MB | ${new Date(b.created).toLocaleString('ko-KR')}</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="restoreBackup('${escapeHtml(b.name)}')">복원</button>
+      </div>
+    `).join('');
+  } catch {
+    document.getElementById('backupList').innerHTML = '<div style="color:var(--danger); font-size:13px;">로드 실패</div>';
+  }
+}
+
+async function restoreBackup(name) {
+  if (!confirm(`${name} 백업으로 복원합니다.\n현재 DB가 교체됩니다. 계속하시겠습니까?`)) return;
+
+  try {
+    const resp = await fetch('/api/lod/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ backup_name: name })
+    });
+    const result = await resp.json();
+
+    if (result.success) {
+      showToast('복원 완료! (' + result.totalLoaded + '개 데이터 로드)');
+      loadLodInfo();
+      loadDataTab();
+    } else {
+      showToast('복원 실패: ' + result.message, true);
+    }
+  } catch {
+    showToast('복원 오류', true);
+  }
+}
+
+// ── 데이터 브라우저 ──
+function switchDataTab(tab, btnEl) {
+  currentDataTab = tab;
+  currentPage = 1;
+  currentSearch = '';
+  document.getElementById('searchInput').value = '';
+
+  document.querySelectorAll('.tab-row .tab-btn').forEach(b => b.classList.remove('active'));
+  if (btnEl) btnEl.classList.add('active');
+
+  updateFilterArea();
+  loadDataTab();
+}
+
+function updateFilterArea() {
+  const area = document.getElementById('filterArea');
+  if (currentDataTab === 'items') {
+    area.innerHTML = `
+      <label>타입:
+        <select id="filterType" onchange="currentPage=1;loadDataTab()">
+          <option value="">전체</option>
+          <option value="무기">무기</option>
+          <option value="의상">의상</option>
+          <option value="모자">모자</option>
+          <option value="장갑">장갑</option>
+          <option value="신발">신발</option>
+          <option value="각반">각반</option>
+          <option value="망토">망토</option>
+          <option value="방패">방패</option>
+          <option value="목걸이">목걸이</option>
+          <option value="반지">반지</option>
+          <option value="귀걸이">귀걸이</option>
+          <option value="벨트">벨트</option>
+        </select>
+      </label>
+      <label>직업:
+        <select id="filterJob" onchange="currentPage=1;loadDataTab()">
+          <option value="">전체</option>
+          <option value="전사">전사</option>
+          <option value="도적">도적</option>
+          <option value="법사">법사</option>
+          <option value="직자">직자</option>
+          <option value="도사">도사</option>
+          <option value="공용">공용</option>
+        </select>
+      </label>
+    `;
+  } else {
+    area.innerHTML = '';
+  }
+}
+
+function searchData() {
+  currentSearch = document.getElementById('searchInput').value.trim();
+  currentPage = 1;
+  loadDataTab();
+}
+
+function clearSearch() {
+  currentSearch = '';
+  currentPage = 1;
+  document.getElementById('searchInput').value = '';
+  if (document.getElementById('filterType')) document.getElementById('filterType').value = '';
+  if (document.getElementById('filterJob')) document.getElementById('filterJob').value = '';
+  loadDataTab();
+}
+
+async function loadDataTab() {
+  const params = new URLSearchParams({ page: currentPage, limit: 50 });
+  if (currentSearch) params.set('search', currentSearch);
+
+  if (currentDataTab === 'items') {
+    const typeEl = document.getElementById('filterType');
+    const jobEl = document.getElementById('filterJob');
+    if (typeEl && typeEl.value) params.set('type', typeEl.value);
+    if (jobEl && jobEl.value) params.set('job', jobEl.value);
+  }
+
+  try {
+    const resp = await fetch(`/api/lod/${currentDataTab}?${params}`, { headers: authHeaders() });
+    const data = await resp.json();
+
+    if (!data.success) {
+      document.getElementById('dataBody').innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--danger);">${data.message}</td></tr>`;
+      return;
+    }
+
+    document.getElementById('totalInfo').textContent = `총 ${data.total.toLocaleString()}건`;
+    renderDataHead();
+    renderDataBody(data.results);
+    renderPagination(data.page, data.pages, data.total);
+  } catch (err) {
+    document.getElementById('dataBody').innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--danger);">로드 실패</td></tr>';
+  }
+}
+
+function renderDataHead() {
+  const head = document.getElementById('dataHead');
+
+  if (currentDataTab === 'items') {
+    head.innerHTML = `<tr>
+      <th>이름</th>
+      <th>타입</th>
+      <th>직업</th>
+      <th>레벨</th>
+      <th>성별</th>
+      <th>AC</th>
+      <th>마방</th>
+      <th>데미지</th>
+      <th>스탯</th>
+      <th>설명</th>
+    </tr>`;
+  } else {
+    head.innerHTML = `<tr>
+      <th>이름</th>
+      <th>표시명</th>
+      <th>${currentDataTab === 'spells' ? 'MP소모' : '-'}</th>
+      <th>습득레벨</th>
+      <th>비용</th>
+      <th>요구스탯</th>
+      <th>필요아이템</th>
+      <th>설명</th>
+    </tr>`;
+  }
+}
+
+function renderDataBody(results) {
+  const body = document.getElementById('dataBody');
+
+  if (!results || results.length === 0) {
+    body.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-dim);">데이터 없음</td></tr>';
+    return;
+  }
+
+  if (currentDataTab === 'items') {
+    body.innerHTML = results.map(item => {
+      const stats = [];
+      if (item.str) stats.push(statBadge('STR', item.str));
+      if (item.dex) stats.push(statBadge('DEX', item.dex));
+      if (item.int) stats.push(statBadge('INT', item.int));
+      if (item.wis) stats.push(statBadge('WIS', item.wis));
+      if (item.con) stats.push(statBadge('CON', item.con));
+
+      const extras = [];
+      if (item.hitRole) extras.push(`명${item.hitRole}`);
+      if (item.damRole) extras.push(`추${item.damRole}`);
+      if (item.hp) extras.push(`HP${item.hp}`);
+      if (item.mp) extras.push(`MP${item.mp}`);
+
+      const dmg = (item.smallDamage || item.largeDamage) ? `${item.smallDamage||0}/${item.largeDamage||0}` : '-';
+
+      return `<tr>
+        <td><strong>${escapeHtml(item.name || '')}</strong></td>
+        <td>${escapeHtml(item.type || '-')}</td>
+        <td>${escapeHtml(item.job || '-')}</td>
+        <td class="text-accent">${item.level || '-'}</td>
+        <td class="text-dim">${item.gender || '-'}</td>
+        <td>${item.ac != null && item.ac !== 0 ? item.ac : '-'}</td>
+        <td>${item.magicDefense || '-'}</td>
+        <td>${dmg}${extras.length ? '<br><span class="text-dim" style="font-size:11px">' + extras.join(' ') + '</span>' : ''}</td>
+        <td>${stats.join(' ') || '-'}</td>
+        <td class="desc-cell" title="${escapeHtml(item.description || '')}">${escapeHtml(item.description || '-')}</td>
+      </tr>`;
+    }).join('');
+  } else {
+    body.innerHTML = results.map(item => {
+      const stats = [];
+      if (item.needStr && item.needStr > 0) stats.push(statBadge('STR', item.needStr, true));
+      if (item.needDex && item.needDex > 0) stats.push(statBadge('DEX', item.needDex, true));
+      if (item.needInt && item.needInt > 0) stats.push(statBadge('INT', item.needInt, true));
+      if (item.needWis && item.needWis > 0) stats.push(statBadge('WIS', item.needWis, true));
+      if (item.needCon && item.needCon > 0) stats.push(statBadge('CON', item.needCon, true));
+
+      return `<tr>
+        <td><strong>${escapeHtml(item.name || '')}</strong></td>
+        <td>${escapeHtml(item.displayName || '-')}</td>
+        <td>${currentDataTab === 'spells' && item.costMana ? item.costMana.toLocaleString() : '-'}</td>
+        <td class="text-accent">${item.needLevel || '-'}</td>
+        <td>${item.needGold ? item.needGold.toLocaleString() + 'G' : '-'}</td>
+        <td>${stats.join(' ') || '-'}</td>
+        <td class="text-dim">${escapeHtml(item.needItem || '-')}</td>
+        <td class="desc-cell" title="${escapeHtml(item.description || '')}">${escapeHtml(item.description || '-')}</td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+function statBadge(label, val, isReq) {
+  if (isReq) return `<span class="stat-badge neutral">${label} ${val}</span>`;
+  const cls = val > 0 ? 'positive' : val < 0 ? 'negative' : 'neutral';
+  const sign = val > 0 ? '+' : '';
+  return `<span class="stat-badge ${cls}">${label}${sign}${val}</span>`;
+}
+
+function renderPagination(page, pages, total) {
+  const el = document.getElementById('pagination');
+  if (pages <= 1) { el.innerHTML = ''; return; }
+
+  let html = `<button onclick="goPage(1)" ${page <= 1 ? 'disabled' : ''}>&#x00AB;</button>`;
+  html += `<button onclick="goPage(${page - 1})" ${page <= 1 ? 'disabled' : ''}>&#x25C0;</button>`;
+
+  const start = Math.max(1, page - 2);
+  const end = Math.min(pages, page + 2);
+
+  if (start > 1) html += `<span class="page-info">...</span>`;
+  for (let i = start; i <= end; i++) {
+    html += `<button onclick="goPage(${i})" class="${i === page ? 'active' : ''}">${i}</button>`;
+  }
+  if (end < pages) html += `<span class="page-info">...</span>`;
+
+  html += `<button onclick="goPage(${page + 1})" ${page >= pages ? 'disabled' : ''}>&#x25B6;</button>`;
+  html += `<button onclick="goPage(${pages})" ${page >= pages ? 'disabled' : ''}>&#x00BB;</button>`;
+  html += `<span class="page-info">${page} / ${pages}</span>`;
+
+  el.innerHTML = html;
+}
+
+function goPage(p) {
+  currentPage = p;
+  loadDataTab();
+  window.scrollTo({ top: document.querySelector('.table-wrap').offsetTop - 60, behavior: 'smooth' });
+}
+
+// ── 유틸 ──
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function showToast(msg, isError = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(() => { el.className = 'toast'; }, 2500);
+}
+
+// ── 초기화 ──
+(async () => {
+  try {
+    await checkAuth();
+    updateFilterArea();
+    loadLodInfo();
+    loadBackups();
+    loadDataTab();
+  } catch (e) {
+    console.error('Init failed:', e);
+  }
+})();
+</script>
+</body>
+</html>
