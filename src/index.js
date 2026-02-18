@@ -115,7 +115,6 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // 정적 파일 서빙
-const path = require('path');
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // 숫자를 한글 단위로 변환 (예: 150000000 → "1억 5,000만")
