@@ -1063,6 +1063,14 @@ app.put('/api/admin/features/rooms/:roomId/name', adminAuth, (req, res) => {
   res.json({ success: true, ...featureToggles.getAll() });
 });
 
+// ── 기능 토글 체크 API (내부용, 인증 불필요) ──────────────
+app.post('/api/features/check', (req, res) => {
+  const { command, room_id } = req.body;
+  if (!command) return res.json({ enabled: true });
+  const enabled = featureToggles.isEnabled(command, room_id);
+  res.json({ enabled });
+});
+
 // ── 파티 관리 API (admin) ──────────────────────────────
 
 // 관리자용 파티 목록 (시간 필터 없이 전체)
