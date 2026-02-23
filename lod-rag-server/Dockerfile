@@ -10,13 +10,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Playwright Chromium 설치
-RUN playwright install chromium && playwright install-deps chromium
+# Playwright Chromium 설치 (폰트 패키지 수동 설치 후 의존성)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-unifont fonts-ubuntu \
+    && rm -rf /var/lib/apt/lists/* \
+    && playwright install chromium \
+    && playwright install-deps chromium || true
 
 COPY . .
 
 # data 디렉토리 생성 (볼륨 마운트 전 기본 구조)
-RUN mkdir -p data/lod_nexon data/naver_cafe data/bookmarks
+RUN mkdir -p data/lod_nexon/images data/naver_cafe/images data/bookmarks
 
 EXPOSE 8100
 
