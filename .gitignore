@@ -80,5 +80,14 @@ Thumbs.db
 # Data directory (Docker volume)
 data/
 
+# lod-rag-server
+lod-rag-server/.env
+lod-rag-server/naver_cookies.json
+lod-rag-server/data/lod_nexon/
+lod-rag-server/data/naver_cafe/
+lod-rag-server/data/bookmarks/
+lod-rag-server/__pycache__/
+lod-rag-server/**/__pycache__/
+
 # Claude Code
 .claude/

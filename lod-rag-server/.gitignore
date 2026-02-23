@@ -1,0 +1,25 @@
+# 환경변수
+.env
+
+# 데이터 (Docker 볼륨)
+data/lod_nexon/
+data/naver_cafe/
+data/bookmarks/
+
+# 네이버 쿠키 (민감정보)
+naver_cookies.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

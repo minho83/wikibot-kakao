@@ -1,0 +1,25 @@
+# Web
+fastapi==0.109.0
+uvicorn==0.27.0
+httpx==0.26.0
+
+# 크롤링
+requests==2.31.0
+beautifulsoup4==4.12.3
+playwright==1.40.0
+
+# 벡터 DB
+qdrant-client==1.7.0
+
+# OpenAI
+openai==1.12.0
+
+# 스케줄러
+APScheduler==3.10.4
+
+# 유틸
+python-dotenv==1.0.1
+pydantic==2.6.0
+pydantic-settings==2.2.1
+aiofiles==23.2.1
+loguru==0.7.2

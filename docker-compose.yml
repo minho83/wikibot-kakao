@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  wikibot:
+    build: .
+    container_name: wikibot-server
+    restart: unless-stopped
+    ports:
+      - "8214:3000"
+    volumes:
+      - ${DATA_DIR:-~/wikibot-data}/nickname.db:/app/nickname.db
+      - ${DATA_DIR:-~/wikibot-data}/notice.db:/app/notice.db
+      - ${DATA_DIR:-~/wikibot-data}/trade.db:/app/trade.db
+      - ${DATA_DIR:-~/wikibot-data}/party.db:/app/party.db
+      - ${DATA_DIR:-~/wikibot-data}/feature-toggles.json:/app/feature-toggles.json
+      - ./LOD_DB:/app/LOD_DB
+    env_file:
+      - ${DATA_DIR:-~/wikibot-data}/.env
+    environment:
+      - RAG_SERVER_URL=http://lod-rag-server:8100
+    depends_on:
+      - lod-rag-server
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - ${DATA_DIR:-~/wikibot-data}/qdrant:/qdrant/storage
+
+  lod-rag-server:
+    build: ./lod-rag-server
+    container_name: lod-rag-server
+    restart: unless-stopped
+    ports:
+      - "8100:8100"
+    volumes:
+      - ${DATA_DIR:-~/wikibot-data}/rag_data:/app/data
+    env_file:
+      - ./lod-rag-server/.env
+    environment:
+      - QDRANT_HOST=qdrant
+    depends_on:
+      - qdrant

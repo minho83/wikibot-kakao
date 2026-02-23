@@ -15,6 +15,7 @@ const { NicknameService } = require('./services/nicknameService');
 const { NoticeService } = require('./services/noticeService');
 const { TradeService } = require('./services/tradeService');
 const { PartyService } = require('./services/partyService');
+const { SearchRagService } = require('./services/searchRagService');
 const { rateLimiter, errorHandler } = require('./middleware');
 
 // ── 관리자 인증 ──────────────────────────────────────
@@ -57,6 +58,7 @@ const nicknameService = new NicknameService();
 const noticeService = new NoticeService();
 const tradeService = new TradeService();
 const partyService = new PartyService();
+const searchRagService = new SearchRagService();
 
 // 검색 서비스 초기화
 let initialized = false;
@@ -413,6 +415,22 @@ app.post('/ask/community', async (req, res) => {
   } catch (error) {
     console.error('Community search error:', error);
     res.status(500).json({ success: false, answer: '게시판 검색 중 오류가 발생했습니다.', sources: [] });
+  }
+});
+
+// RAG 통합 검색 (/ask/search) - lod-rag-server 연동
+app.post('/ask/search', async (req, res) => {
+  try {
+    const { query, max_length } = req.body;
+    if (!query) {
+      return res.status(400).json({ success: false, answer: '검색어를 입력해주세요.', sources: [] });
+    }
+
+    const result = await searchRagService.search(query);
+    res.json(result);
+  } catch (error) {
+    console.error('RAG search error:', error);
+    res.status(500).json({ success: false, answer: 'RAG 검색 중 오류가 발생했습니다.', sources: [] });
   }
 });
 
