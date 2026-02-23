@@ -9,7 +9,7 @@ beautifulsoup4==4.12.3
 playwright==1.40.0
 
 # 벡터 DB
-qdrant-client==1.7.0
+qdrant-client>=1.17.0
 
 # OpenAI
 openai==1.12.0
