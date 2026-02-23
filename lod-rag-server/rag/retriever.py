@@ -24,7 +24,7 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 BOOKMARK_TOP_K = int(os.getenv("BOOKMARK_TOP_K", "3"))
 MAX_ANSWER_LENGTH = int(os.getenv("MAX_ANSWER_LENGTH", "300"))
-SCORE_THRESHOLD = float(os.getenv("SCORE_THRESHOLD", "0.50"))
+SCORE_THRESHOLD = float(os.getenv("SCORE_THRESHOLD", "0.35"))
 
 SYSTEM_PROMPT = """당신은 어둠의전설 게임 전문 도우미입니다.
 아래에 제공되는 게시글 내용을 꼼꼼히 읽고 사용자 질문에 답변해주세요.
@@ -193,11 +193,11 @@ class Retriever:
     @staticmethod
     def _get_confidence(top_score: float) -> str:
         """유사도 점수 → 신뢰도 등급"""
-        if top_score >= 0.70:
+        if top_score >= 0.55:
             return "high"
-        elif top_score >= 0.55:
+        elif top_score >= 0.42:
             return "medium"
-        elif top_score >= 0.45:
+        elif top_score >= 0.35:
             return "low"
         else:
             return "not_found"

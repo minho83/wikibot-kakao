@@ -8,12 +8,12 @@
 !검색 → iris-kakao-bot → wikibot /ask/search → lod-rag-server /search → Qdrant
 ```
 
-### 책갈피 2단계 RAG
+### 책갈피 2단계 RAG + 이미지 하이브리드
 
-1. **크롤링**: LOD 공홈 + 네이버 카페 게시글 수집 → `data/*.json`
-2. **책갈피 생성**: GPT-4o-mini가 원본을 읽고 요약/키워드/태그 추출
-3. **임베딩**: 책갈피 텍스트(짧고 정확) → Qdrant 벡터 저장
-4. **검색**: 질문 → Qdrant에서 유사 책갈피 Top-3 → 원본 전체 내용 로드 → GPT 답변
+1. **크롤링**: LOD 공홈 + 네이버 카페 게시글 수집 → `data/*.json` + 이미지 다운로드
+2. **책갈피 생성**: GPT-4o-mini (Vision) 가 원본 + 이미지를 읽고 요약/키워드/태그/이미지설명 추출
+3. **임베딩**: 책갈피 텍스트 + 이미지 설명 → Qdrant 벡터 저장
+4. **검색**: 질문 → Qdrant에서 유사 책갈피 Top-3 → 원본 전체 내용 + 이미지 로드 → GPT Vision 답변
 
 ## 서버 초기 설치
 
@@ -56,6 +56,14 @@ nano .env
 - `QDRANT_HOST` — Docker compose 사용 시 `qdrant`, 단독 실행 시 `localhost`
 - `ADMIN_SECRET_KEY` — /crawl API 인증 키
 
+**이미지 처리 설정 (선택):**
+- `IMAGE_ENABLED` — 이미지 다운로드/Vision 활성화 (기본: `true`)
+- `IMAGE_MAX_PER_POST` — 게시글당 최대 이미지 수 (기본: 10)
+- `IMAGE_MAX_FOR_BOOKMARK` — 책갈피 생성 시 Vision에 전달할 이미지 수 (기본: 5)
+- `IMAGE_MAX_FOR_ANSWER` — 답변 생성 시 Vision에 전달할 이미지 수 (기본: 6)
+- `IMAGE_VISION_DETAIL_BOOKMARK` — 책갈피 Vision detail (기본: `low`, 이미지당 85토큰)
+- `IMAGE_VISION_DETAIL_ANSWER` — 답변 Vision detail (기본: `auto`)
+
 ### 4. 네이버 카페 쿠키 준비
 
 **로컬 PC에서 (브라우저 GUI 필요):**
@@ -85,8 +93,8 @@ python import_cookies_manual.py
 # 데이터 디렉토리 생성
 mkdir -p data/lod_nexon data/naver_cafe data/bookmarks
 
-# LOD 공홈 크롤링 (현자의 마을 20페이지)
-python main.py crawl-lod --pages 20
+# LOD 공홈 크롤링 (현자의 마을 전체 100페이지, 약 1500건)
+python main.py crawl-lod --pages 100
 
 # 네이버 카페 크롤링 (4개 게시판, 게시판당 10페이지)
 python main.py crawl-cafe --pages 10
@@ -137,7 +145,7 @@ curl -X POST http://localhost:8214/ask/search \
 ## CLI 명령어
 
 ```bash
-python main.py crawl-lod [--pages 20]     # LOD 공홈 크롤링
+python main.py crawl-lod [--pages 100]    # LOD 공홈 크롤링 (전체: 100페이지)
 python main.py crawl-cafe [--pages 10]     # 네이버 카페 크롤링
 python main.py create-bookmarks            # 책갈피 생성 (GPT)
 python main.py embed-all                   # 임베딩 → Qdrant
@@ -163,7 +171,7 @@ python main.py stats                       # 데이터 현황
 |------|------|
 | 매 1시간 | 신규 게시글 크롤링 + 책갈피 + 임베딩 |
 | 매일 03:00 | 미처리분 책갈피/임베딩 보정 |
-| 매주 일 02:00 | 전체 재크롤링 (LOD 20페이지, 카페 10페이지) |
+| 매주 일 02:00 | 전체 재크롤링 (LOD 100페이지, 카페 10페이지) |
 
 ## Docker Compose 배포
 
@@ -211,7 +219,7 @@ docker restart qdrant
 ### 검색 결과 품질이 낮을 때
 ```bash
 # 전체 재크롤링 + 재임베딩
-python main.py crawl-lod --pages 20
+python main.py crawl-lod --pages 100
 python main.py crawl-cafe --pages 10
 python main.py create-bookmarks
 python main.py embed-all

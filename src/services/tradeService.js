@@ -6,13 +6,12 @@ const readline = require('readline');
 class TradeService {
   constructor() {
     this.dbPath = path.join(__dirname, '../../trade.db');
-    this.lodDbPath = path.join(__dirname, '../../LOD_DB/lod.db');
     this.db = null;
     this.initialized = false;
     this.saveInterval = null;
     this.aliasMap = new Map(); // alias → canonical_name
-    this.knownItems = new Set(); // LOD_DB에서 로드한 아이템명
-    this.bundleItems = new Set(); // BundleMaxCount > 0인 묶음거래 아이템 (소모품/재료)
+    this.knownItems = new Set(); // 아이템명 (현재 미사용)
+    this.bundleItems = new Set(); // 묶음거래 아이템 (현재 미사용)
     this.rejectedPatterns = new Set(); // cleanup에서 학습된 거부 패턴
   }
 
@@ -42,7 +41,6 @@ class TradeService {
       this._createTables();
       this._seedAliases();
       this._buildAliasIndex();
-      this._loadLodItems(SQL);
       this._loadRejectedPatterns();
       this.initialized = true;
 
@@ -51,40 +49,6 @@ class TradeService {
     } catch (error) {
       console.error('Failed to initialize TradeService:', error);
       throw error;
-    }
-  }
-
-  /**
-   * LOD_DB에서 아이템명 로드
-   */
-  _loadLodItems(SQL) {
-    try {
-      if (!fs.existsSync(this.lodDbPath)) {
-        console.log('LOD_DB not found, skipping item validation');
-        return;
-      }
-      const buf = fs.readFileSync(this.lodDbPath);
-      const lodDb = new SQL.Database(buf);
-      // DisplayName + BundleMaxCount 로드 (묶음거래 가능 아이템 구분)
-      const result = lodDb.exec(`SELECT DISTINCT DisplayName, MAX(CAST(BundleMaxCount AS INTEGER)) as bmc FROM items GROUP BY DisplayName`);
-      if (result.length > 0) {
-        for (const row of result[0].values) {
-          const name = row[0];
-          const bundleMax = row[1] || 0;
-          this.knownItems.add(name);
-          if (bundleMax > 0) this.bundleItems.add(name);
-          // 레벨 접미사 제거한 베이스명도 추가 (나겔링반지(Lev1) → 나겔링반지)
-          const base = name.replace(/\(Lev\d+\)/, '').trim();
-          if (base !== name) {
-            this.knownItems.add(base);
-            if (bundleMax > 0) this.bundleItems.add(base);
-          }
-        }
-      }
-      lodDb.close();
-      console.log(`LOD_DB loaded: ${this.knownItems.size} item names (묶음아이템: ${this.bundleItems.size}개)`);
-    } catch (e) {
-      console.error('Failed to load LOD_DB:', e);
     }
   }
 
@@ -108,16 +72,10 @@ class TradeService {
   }
 
   /**
-   * 알려진 게임 아이템인지 확인
+   * 알려진 게임 아이템인지 확인 (LOD_DB 제거 후 항상 통과)
    */
   isKnownItem(name) {
-    if (this.knownItems.size === 0) return true; // LOD_DB 없으면 통과
-    if (this.knownItems.has(name)) return true;
-    // 별칭의 정식명도 허용
-    for (const canonical of this.aliasMap.values()) {
-      if (canonical === name) return true;
-    }
-    return false;
+    return true;
   }
 
   _createTables() {
@@ -1697,84 +1655,6 @@ class TradeService {
   }
 
   // ── 데이터 정리 ────────────────────────────────────────
-
-  /**
-   * LOD_DB 기반 거래 데이터 정리
-   * - canonical_name이 LOD_DB에도 별칭에도 없는 항목 삭제
-   * - sinceDate: 이 날짜 이후 데이터만 정리 (없으면 전체)
-   */
-  cleanupTrades(sinceDate) {
-    if (!this.initialized) return { success: false, message: 'not initialized' };
-    if (this.knownItems.size === 0) return { success: false, message: 'LOD_DB not loaded' };
-
-    // 별칭 정식명 세트
-    const aliasCanonicals = new Set(this.aliasMap.values());
-
-    // 유효한 이름인지 체크
-    const isValid = (name) => {
-      if (!name) return false;
-      if (this.knownItems.has(name)) return true;
-      if (aliasCanonicals.has(name)) return true;
-      // LOD_DB에서 부분매칭 (2글자 이상 매칭)
-      for (const item of this.knownItems) {
-        if (item.includes(name) && name.length >= 3) return true;
-        if (name.includes(item) && item.length >= 3) return true;
-      }
-      return false;
-    };
-
-    // 정리 대상 조회
-    let sql = `SELECT DISTINCT canonical_name, COUNT(*) as cnt FROM trades`;
-    if (sinceDate) {
-      sql += ` WHERE trade_date >= '${sinceDate}'`;
-    }
-    sql += ` GROUP BY canonical_name`;
-
-    const result = this.db.exec(sql);
-    if (result.length === 0) return { success: true, removed: 0, kept: 0 };
-
-    let removed = 0;
-    let kept = 0;
-    const removedNames = [];
-
-    for (const row of result[0].values) {
-      const [name, cnt] = row;
-      if (isValid(name)) {
-        kept++;
-      } else {
-        // 삭제
-        if (sinceDate) {
-          this.db.run(`DELETE FROM trades WHERE canonical_name = ? AND trade_date >= ?`, [name, sinceDate]);
-        } else {
-          this.db.run(`DELETE FROM trades WHERE canonical_name = ?`, [name]);
-        }
-        removed++;
-        removedNames.push(`${name}(${cnt}건)`);
-
-        // 거부 패턴 학습
-        this.db.run(`
-          INSERT INTO rejected_patterns (pattern, reject_count, last_seen, source)
-          VALUES (?, 1, datetime('now','localtime'), 'cleanup')
-          ON CONFLICT(pattern) DO UPDATE SET
-            reject_count = reject_count + 1,
-            last_seen = datetime('now','localtime')
-        `, [name]);
-      }
-    }
-
-    // 메모리 캐시 갱신 (3회 이상 거부된 패턴)
-    this._loadRejectedPatterns();
-
-    this.saveDb();
-
-    return {
-      success: true,
-      removed,
-      kept,
-      removedCount: removedNames.length,
-      examples: removedNames.slice(0, 20),
-    };
-  }
 
   /**
    * 오래된 거래 데이터 삭제

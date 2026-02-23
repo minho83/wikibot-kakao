@@ -15,8 +15,6 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "fuse.js": "^7.0.0",
-    "multer": "^2.0.2",
     "sql.js": "^1.10.3"
   },
   "devDependencies": {

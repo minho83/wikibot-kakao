@@ -1,14 +1,14 @@
 # CLAUDE.md
 
 ## 프로젝트 개요
-KakaoTalk 챗봇 서버 - LOD(어둠의전설) 게임 위키 검색, 거래 시세, 파티 모집, 공지사항 기능을 제공하는 Node.js/Express 백엔드.
+KakaoTalk 챗봇 서버 - LOD(어둠의전설) 게임 거래 시세, 파티 모집, 공지사항, 게시판 검색 기능을 제공하는 Node.js/Express 백엔드.
+RAG 서버(lod-rag-server)와 연동하여 AI 기반 게시판/카페 검색도 지원.
 iris-kakao-bot(Python, 카카오톡 메시지 중계)과 연동하여 카카오톡 오픈채팅방에서 동작.
 
 ## 기술 스택
 - **런타임**: Node.js 20 (Docker: node:20-slim)
 - **프레임워크**: Express 4
 - **DB**: sql.js (SQLite in-memory, 파일 persist) - nickname.db, notice.db, trade.db, party.db
-- **검색**: Fuse.js (퍼지 검색)
 - **스크래핑**: cheerio, axios
 - **테스트**: Jest
 - **배포**: Docker + GitHub Actions (self-hosted runner)
@@ -34,13 +34,13 @@ npx jest src/services/partyService.test.js  # 단일 파일
 src/
 ├── index.js                  # Express 앱 + 전체 라우트 정의 (메인 엔트리)
 ├── controllers/
-│   ├── webhookController.js  # KakaoTalk 웹훅 (!검색, !공지 등 명령어 처리)
+│   ├── webhookController.js  # KakaoTalk 웹훅 (!현자, !공지 등 명령어 처리)
 │   └── nicknameController.js # 닉네임 관리 API
 ├── services/
-│   ├── searchService.js      # LOD_DB JSON 기반 아이템/스킬/마법 검색
 │   ├── communityService.js   # LOD 게시판 스크래핑
 │   ├── noticeService.js      # 공지사항/업데이트 크롤링 + 자동 알림
 │   ├── nicknameService.js    # 닉네임 DB (sql.js)
+│   ├── searchRagService.js   # RAG 서버 연동 검색
 │   ├── tradeService.js       # 거래 시세 수집/조회 (sql.js)
 │   ├── partyService.js       # 파티 모집 수집/조회 (sql.js)
 │   └── partyService.test.js  # 파티 서비스 테스트
@@ -57,20 +57,16 @@ public/
 ├── admin.html                # 파티 DB 관리 페이지
 └── party-template.txt        # 파티 메시지 파싱 템플릿
 
-LOD_DB/                       # 게임 DB JSON (git submodule)
+lod-rag-server/               # RAG 서버 (Python FastAPI, 게시판/카페 크롤링 + AI 검색)
 iris-kakao-bot/               # Python 카카오톡 봇 (git submodule)
 ```
 
 ## API 엔드포인트 구조
 
-- `POST /ask` - 통합 검색 (RAG 호환)
-- `POST /ask/item` - 아이템 전용 검색
-- `POST /ask/skill` - 스킬/마법 전용 검색
 - `POST /ask/community` - 게시판 검색
 - `POST /ask/notice` - 공지사항 조회
 - `POST /ask/update` - 업데이트 내역
 - `GET /ask/check-new` - 새 공지/업데이트 체크
-- `GET /api/search` - DB 검색 (웹 UI용)
 - `POST /api/trade/*` - 거래 시세 API
 - `GET/POST /api/party/*` - 파티 모집 API
 - `GET/PUT/DELETE /api/party/admin/*` - 파티 관리 API
@@ -95,14 +91,13 @@ iris-kakao-bot/               # Python 카카오톡 봇 (git submodule)
 - 서비스 클래스 패턴: `class XxxService { constructor() { ... } initialize() { ... } close() { ... } }`
 - DB 서비스는 `sql.js` 사용, `initialize()`에서 DB 로드, `close()`에서 파일 저장
 - 에러 응답: `{ success: false, message: '...' }`
-- 검색 응답: `{ answer: '...', sources: [...] }`
 
 ## 주의사항
 
 - `src/index.js`에 라우트가 직접 정의되어 있음 (대부분의 API가 여기에 있음)
 - DB 파일(*.db)은 `.gitignore`에 포함, Docker 볼륨으로 관리
 - `.env`는 서버의 `$HOME/wikibot-data/.env`에만 존재 (repo에 없음)
-- `LOD_DB/`는 git submodule (게임 데이터 JSON)
-- `iris-kakao-bot/`도 git submodule
+- `iris-kakao-bot/`은 git submodule
+- `lod-rag-server/`는 RAG 서버 (Docker Compose로 함께 배포)
 - 공지/업데이트 자동 체크 스케줄러가 `src/index.js`에 내장
-- DB 자동 정리: 매일 04:00 (거래 14일, 파티 2일)
+- DB 자동 정리: 매일 04:00 (거래 14일, 파티 7일)

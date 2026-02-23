@@ -13,7 +13,6 @@ services:
       - ${DATA_DIR:-~/wikibot-data}/trade.db:/app/trade.db
       - ${DATA_DIR:-~/wikibot-data}/party.db:/app/party.db
       - ${DATA_DIR:-~/wikibot-data}/feature-toggles.json:/app/feature-toggles.json
-      - ./LOD_DB:/app/LOD_DB
     env_file:
       - ${DATA_DIR:-~/wikibot-data}/.env
     environment:
