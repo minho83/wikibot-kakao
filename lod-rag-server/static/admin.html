@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LOD RAG 관리</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+        .header { background: #1a1a2e; color: #fff; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 18px; }
+        .header .stats { font-size: 13px; color: #aaa; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
+
+        /* 인증 */
+        .auth-bar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; }
+        .auth-bar input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 300px; }
+        .auth-bar button { padding: 8px 16px; background: #1a1a2e; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+
+        /* 필터 */
+        .filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+        .filters select, .filters input { padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
+        .filters input[type="text"] { width: 200px; }
+        .filters button { padding: 6px 14px; background: #4a4a6a; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .filters .count { font-size: 13px; color: #666; margin-left: auto; }
+
+        /* 테이블 */
+        .table-wrap { background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { background: #f8f8f8; padding: 10px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #eee; white-space: nowrap; }
+        td { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }
+        tr:hover { background: #fafafa; }
+        tr.excluded { background: #fff5f5; opacity: 0.7; }
+
+        /* 배지 */
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+        .badge-lod { background: #e3f2fd; color: #1565c0; }
+        .badge-cafe { background: #e8f5e9; color: #2e7d32; }
+        .badge-excluded { background: #ffebee; color: #c62828; }
+        .badge-ok { background: #e8f5e9; color: #2e7d32; }
+        .badge-pending { background: #fff3e0; color: #e65100; }
+        .badge-img { background: #f3e5f5; color: #7b1fa2; }
+
+        /* 버튼 */
+        .btn { padding: 4px 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .btn-exclude { background: #ef5350; color: #fff; }
+        .btn-include { background: #66bb6a; color: #fff; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* 링크 */
+        .title-link { color: #1565c0; text-decoration: none; max-width: 300px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .title-link:hover { text-decoration: underline; }
+
+        /* 페이지네이션 */
+        .pagination { display: flex; gap: 4px; justify-content: center; margin-top: 16px; }
+        .pagination button { padding: 6px 12px; border: 1px solid #ddd; background: #fff; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .pagination button.active { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
+
+        /* 모달 */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 100; }
+        .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #fff; border-radius: 8px; padding: 24px; max-width: 700px; width: 90%; max-height: 80vh; overflow-y: auto; z-index: 101; }
+        .modal h3 { margin-bottom: 12px; }
+        .modal pre { background: #f5f5f5; padding: 12px; border-radius: 4px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; max-height: 300px; overflow-y: auto; }
+        .modal .close { position: absolute; top: 12px; right: 16px; font-size: 24px; cursor: pointer; color: #999; }
+
+        .loading { text-align: center; padding: 40px; color: #999; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>LOD RAG 관리 페이지</h1>
+        <div class="stats" id="headerStats">-</div>
+    </div>
+
+    <div class="container">
+        <div class="auth-bar">
+            <input type="password" id="adminKey" placeholder="관리자 키 입력" />
+            <button onclick="loadPosts()">접속</button>
+        </div>
+
+        <div class="filters">
+            <select id="filterSource">
+                <option value="">전체 소스</option>
+                <option value="lod_nexon">LOD 공홈</option>
+                <option value="naver_cafe">네이버 카페</option>
+            </select>
+            <select id="filterStatus">
+                <option value="">전체 상태</option>
+                <option value="excluded">제외됨</option>
+                <option value="included">포함됨</option>
+                <option value="no_bookmark">책갈피 미생성</option>
+            </select>
+            <input type="text" id="filterSearch" placeholder="제목 검색..." onkeyup="if(event.key==='Enter')loadPosts()" />
+            <button onclick="loadPosts()">검색</button>
+            <div class="count" id="totalCount">-</div>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>소스</th>
+                        <th>제목</th>
+                        <th>게시판</th>
+                        <th>날짜</th>
+                        <th>조회</th>
+                        <th>이미지</th>
+                        <th>상태</th>
+                        <th>관리</th>
+                    </tr>
+                </thead>
+                <tbody id="postsBody">
+                    <tr><td colspan="8" class="loading">관리자 키를 입력하고 접속하세요</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination" id="pagination"></div>
+    </div>
+
+    <!-- 상세 모달 -->
+    <div class="modal-overlay" id="modalOverlay" onclick="closeModal()"></div>
+    <div class="modal" id="modal" style="display:none">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <h3 id="modalTitle">-</h3>
+        <div id="modalContent"></div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        const perPage = 50;
+
+        function getKey() {
+            return document.getElementById('adminKey').value;
+        }
+
+        async function apiFetch(url, method = 'GET') {
+            const resp = await fetch(url, {
+                method,
+                headers: { 'X-Admin-Key': getKey() }
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                throw new Error(err.detail || `HTTP ${resp.status}`);
+            }
+            return resp.json();
+        }
+
+        async function loadPosts(page = 1) {
+            currentPage = page;
+            const source = document.getElementById('filterSource').value;
+            const status = document.getElementById('filterStatus').value;
+            const search = document.getElementById('filterSearch').value;
+
+            const params = new URLSearchParams({ page, per_page: perPage });
+            if (source) params.set('source', source);
+            if (status) params.set('status', status);
+            if (search) params.set('search', search);
+
+            const tbody = document.getElementById('postsBody');
+            tbody.innerHTML = '<tr><td colspan="8" class="loading">로딩 중...</td></tr>';
+
+            try {
+                const data = await apiFetch(`/admin/posts?${params}`);
+                document.getElementById('totalCount').textContent = `총 ${data.total}건`;
+                document.getElementById('headerStats').textContent = `${data.total}건 크롤링됨`;
+
+                if (!data.posts.length) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="loading">결과 없음</td></tr>';
+                    document.getElementById('pagination').innerHTML = '';
+                    return;
+                }
+
+                tbody.innerHTML = data.posts.map(p => `
+                    <tr class="${p.excluded ? 'excluded' : ''}">
+                        <td><span class="badge ${p.source === 'lod_nexon' ? 'badge-lod' : 'badge-cafe'}">${p.source === 'lod_nexon' ? 'LOD' : '카페'}</span></td>
+                        <td>
+                            <a class="title-link" href="#" onclick="showDetail('${p.source}','${p.id}');return false" title="${esc(p.title)}">${esc(p.title)}</a>
+                        </td>
+                        <td>${esc(p.board_name)}</td>
+                        <td>${esc(p.date)}</td>
+                        <td>${p.views}</td>
+                        <td>${p.image_count > 0 ? '<span class="badge badge-img">' + p.image_count + '장</span>' : '-'}</td>
+                        <td>
+                            ${p.excluded
+                                ? '<span class="badge badge-excluded">제외됨</span>'
+                                : p.has_bookmark
+                                    ? '<span class="badge badge-ok">학습됨</span>'
+                                    : '<span class="badge badge-pending">대기</span>'
+                            }
+                        </td>
+                        <td>
+                            ${p.excluded
+                                ? `<button class="btn btn-include" onclick="includePost('${p.source}','${p.id}')">포함</button>`
+                                : `<button class="btn btn-exclude" onclick="excludePost('${p.source}','${p.id}')">제외</button>`
+                            }
+                        </td>
+                    </tr>
+                `).join('');
+
+                // 페이지네이션
+                renderPagination(data.page, data.total_pages);
+
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="8" class="loading" style="color:red">오류: ${esc(e.message)}</td></tr>`;
+            }
+        }
+
+        function renderPagination(current, total) {
+            const el = document.getElementById('pagination');
+            if (total <= 1) { el.innerHTML = ''; return; }
+            let html = '';
+            const start = Math.max(1, current - 3);
+            const end = Math.min(total, current + 3);
+            if (start > 1) html += `<button onclick="loadPosts(1)">1</button>`;
+            if (start > 2) html += `<button disabled>...</button>`;
+            for (let i = start; i <= end; i++) {
+                html += `<button class="${i === current ? 'active' : ''}" onclick="loadPosts(${i})">${i}</button>`;
+            }
+            if (end < total - 1) html += `<button disabled>...</button>`;
+            if (end < total) html += `<button onclick="loadPosts(${total})">${total}</button>`;
+            el.innerHTML = html;
+        }
+
+        async function excludePost(source, id) {
+            if (!confirm('이 게시글을 학습 대상에서 제외하시겠습니까?\n(이미 학습된 벡터도 삭제됩니다)')) return;
+            try {
+                await apiFetch(`/admin/posts/${source}/${id}/exclude`, 'POST');
+                loadPosts(currentPage);
+            } catch (e) {
+                alert('제외 실패: ' + e.message);
+            }
+        }
+
+        async function includePost(source, id) {
+            if (!confirm('이 게시글을 다시 학습 대상에 포함하시겠습니까?')) return;
+            try {
+                await apiFetch(`/admin/posts/${source}/${id}/include`, 'POST');
+                loadPosts(currentPage);
+            } catch (e) {
+                alert('포함 실패: ' + e.message);
+            }
+        }
+
+        async function showDetail(source, id) {
+            try {
+                const data = await apiFetch(`/admin/posts/${source}/${id}`);
+                const post = data.post;
+                const bm = data.bookmark;
+
+                document.getElementById('modalTitle').textContent = post.title || '(제목 없음)';
+
+                let html = `
+                    <p><strong>소스:</strong> ${post.source} | <strong>게시판:</strong> ${post.board_name} | <strong>날짜:</strong> ${post.date} | <strong>조회:</strong> ${post.views}</p>
+                    <p><strong>URL:</strong> <a href="${post.url}" target="_blank">${post.url}</a></p>
+                    <p><strong>크롤링:</strong> ${post.crawled_at} | <strong>제외:</strong> ${post.excluded ? '예' : '아니오'}</p>
+                `;
+
+                // 이미지
+                const images = post.images || [];
+                if (images.length > 0) {
+                    html += `<p><strong>이미지 (${images.length}장):</strong></p><div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">`;
+                    for (const img of images) {
+                        html += `<div style="font-size:11px;text-align:center"><div style="width:100px;height:100px;background:#f0f0f0;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999">${img.filename}<br>${Math.round(img.size_bytes/1024)}KB</div></div>`;
+                    }
+                    html += '</div>';
+                }
+
+                // 본문 미리보기
+                const contentPreview = (post.content || '').substring(0, 500);
+                html += `<p><strong>본문 미리보기:</strong></p><pre>${esc(contentPreview)}${post.content && post.content.length > 500 ? '\n...(생략)' : ''}</pre>`;
+
+                // 책갈피 정보
+                if (bm) {
+                    html += `
+                        <hr style="margin:12px 0"/>
+                        <p><strong>책갈피 정보:</strong></p>
+                        <p><strong>요약:</strong> ${esc(bm.summary)}</p>
+                        <p><strong>키워드:</strong> ${(bm.keywords || []).map(k => `<span class="badge badge-lod">${esc(k)}</span>`).join(' ')}</p>
+                        <p><strong>카테고리:</strong> ${(bm.category_tags || []).map(t => `<span class="badge badge-cafe">${esc(t)}</span>`).join(' ')}</p>
+                    `;
+                    if (bm.image_descriptions && bm.image_descriptions.length) {
+                        html += `<p><strong>이미지 설명:</strong></p><pre>${esc(bm.image_descriptions.join('\n'))}</pre>`;
+                    }
+                } else {
+                    html += `<hr style="margin:12px 0"/><p style="color:#999">책갈피 미생성</p>`;
+                }
+
+                document.getElementById('modalContent').innerHTML = html;
+                document.getElementById('modal').style.display = 'block';
+                document.getElementById('modalOverlay').style.display = 'block';
+
+            } catch (e) {
+                alert('상세 조회 실패: ' + e.message);
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+            document.getElementById('modalOverlay').style.display = 'none';
+        }
+
+        function esc(s) {
+            if (!s) return '';
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        // ESC 키로 모달 닫기
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+    </script>
+</body>
+</html>

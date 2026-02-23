@@ -15,7 +15,7 @@ from qdrant_client.models import (
 from loguru import logger
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
@@ -61,7 +61,15 @@ class Embedder:
         category_tags = ", ".join(bookmark.get("category_tags", []))
         board_name = bookmark.get("board_name", "")
 
-        return f"제목: {title}\n요약: {summary}\n키워드: {keywords}\n카테고리: {category_tags}\n게시판: {board_name}"
+        text = f"제목: {title}\n요약: {summary}\n키워드: {keywords}\n카테고리: {category_tags}\n게시판: {board_name}"
+
+        # 이미지 설명이 있으면 임베딩 텍스트에 추가
+        image_descriptions = bookmark.get("image_descriptions", [])
+        if image_descriptions:
+            desc_text = " / ".join(image_descriptions)
+            text += f"\n이미지 내용: {desc_text}"
+
+        return text
 
     def _get_embedding(self, text: str) -> list[float]:
         """OpenAI 임베딩 API 호출"""
@@ -93,6 +101,7 @@ class Embedder:
             "title": bookmark.get("title", ""),
             "summary": bookmark.get("summary", ""),
             "keywords": bookmark.get("keywords", []),
+            "image_descriptions": bookmark.get("image_descriptions", []),
             "source": bookmark.get("source", ""),
             "board_name": bookmark.get("board_name", ""),
             "date": bookmark.get("date", ""),
@@ -115,6 +124,20 @@ class Embedder:
             return True
         except Exception as e:
             logger.error(f"Qdrant 저장 실패 {bookmark_id}: {e}")
+            return False
+
+    def delete_by_bookmark_id(self, bookmark_id: str) -> bool:
+        """Qdrant에서 bookmark_id로 벡터 삭제"""
+        point_id = self._bookmark_id_to_uuid(bookmark_id)
+        try:
+            self.qdrant.delete(
+                collection_name=COLLECTION,
+                points_selector=[point_id]
+            )
+            logger.info(f"Qdrant 삭제: {bookmark_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Qdrant 삭제 실패 {bookmark_id}: {e}")
             return False
 
     def _is_in_qdrant(self, bookmark_id: str) -> bool:

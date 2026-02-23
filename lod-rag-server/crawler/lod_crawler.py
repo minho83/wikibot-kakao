@@ -15,7 +15,9 @@ from bs4 import BeautifulSoup
 from loguru import logger
 from dotenv import load_dotenv
 
-load_dotenv()
+from utils.image_handler import ImageHandler
+
+load_dotenv(override=True)
 
 DATA_PATH = os.getenv("DATA_LOD_PATH", "./data/lod_nexon")
 DELAY_MIN = float(os.getenv("LOD_DELAY_MIN", "1"))
@@ -36,6 +38,73 @@ class LodCrawler:
     def _delay(self):
         """요청 간 랜덤 딜레이"""
         time.sleep(random.uniform(DELAY_MIN, DELAY_MAX))
+
+    def _extract_and_download_images(self, board_text, post_id: str) -> list[dict]:
+        """BeautifulSoup board_text에서 이미지 추출 + 다운로드"""
+        try:
+            img_tags = board_text.find_all("img")
+            if not img_tags:
+                return []
+
+            # 이미지 후보 수집
+            candidates_raw = []
+            for img in img_tags:
+                src = img.get("src", "") or img.get("data-src", "")
+                if not src:
+                    continue
+
+                # 상대경로 → 절대경로
+                if src.startswith("/"):
+                    src = f"{self.BASE_URL}{src}"
+                elif not src.startswith("http"):
+                    continue
+
+                width = 0
+                height = 0
+                try:
+                    width = int(img.get("width", 0) or 0)
+                    height = int(img.get("height", 0) or 0)
+                except (ValueError, TypeError):
+                    pass
+
+                candidates_raw.append({
+                    "url": src,
+                    "alt": img.get("alt", ""),
+                    "width": width,
+                    "height": height
+                })
+
+            # 필터링
+            candidates = ImageHandler.filter_image_candidates(candidates_raw)
+            if not candidates:
+                return []
+
+            # 저장 디렉토리
+            save_dir = os.path.join(DATA_PATH, "images", post_id)
+
+            downloaded = []
+            for idx, img in enumerate(candidates, 1):
+                url = img["url"]
+                ext = url.split("?")[0].split(".")[-1].lower()
+                if ext not in ("jpg", "jpeg", "png", "gif", "webp"):
+                    ext = "jpg"
+                filename = f"img_{idx:03d}.{ext}"
+
+                result = ImageHandler.download_image_sync(
+                    url, save_dir, filename,
+                    headers=self.HEADERS
+                )
+                if result:
+                    downloaded.append(result)
+
+            if downloaded:
+                logger.info(f"게시글 {post_id}: 이미지 {len(downloaded)}장 다운로드")
+
+            return downloaded
+
+        except Exception as e:
+            logger.warning(f"게시글 {post_id} 이미지 추출 실패: {e}")
+            return []
 
     def crawl_list(self, page: int) -> list[dict]:
         """
@@ -111,6 +180,11 @@ class LodCrawler:
         content = board_text.get_text(separator="\n")
         content = re.sub(r"\n{3,}", "\n\n", content).strip()
 
+        # 이미지 추출 및 다운로드
+        images = []
+        if ImageHandler.is_enabled():
+            images = self._extract_and_download_images(board_text, post_id)
+
         # 메타 정보 추출
         author = ""
         date = ""
@@ -144,6 +218,15 @@ class LodCrawler:
             "date": date,
             "views": views,
             "content": content,
+            "images": [
+                {
+                    "filename": img["filename"],
+                    "original_url": img["original_url"],
+                    "local_path": img["local_path"],
+                    "size_bytes": img["size_bytes"],
+                }
+                for img in images
+            ],
             "url": detail_url,
             "source": "lod_nexon",
             "board_name": "현자의 마을",
@@ -188,5 +271,33 @@ class LodCrawler:
         return stats
 
     def crawl_new(self) -> dict:
-        """1페이지만 크롤링 (스케줄러용, 신규 게시글만 수집)"""
-        return self.crawl_all(start_page=1, end_page=1)
+        """
+        1페이지만 크롤링 (스케줄러용).
+        이미 크롤링된 게시글을 만나면 즉시 중단 → 불필요한 요청 최소화.
+        """
+        total_new = 0
+        total_skipped = 0
+
+        items = self.crawl_list(1)
+        for item in items:
+            # 이미 크롤링된 게시글이면 이후도 이미 있으므로 중단
+            filepath = os.path.join(DATA_PATH, f"{item['post_id']}.json")
+            if os.path.exists(filepath):
+                logger.debug(f"기존 게시글 도달: {item['post_id']} → 크롤링 중단")
+                total_skipped += 1
+                break
+
+            self._delay()
+            result = self.crawl_post(
+                post_id=item["post_id"],
+                title=item["title"],
+                url=item["url"]
+            )
+            if result:
+                total_new += 1
+            else:
+                total_skipped += 1
+
+        stats = {"new": total_new, "skipped": total_skipped}
+        logger.info(f"LOD 신규 크롤링 완료: 신규 {total_new}건, 스킵 {total_skipped}건")
+        return stats

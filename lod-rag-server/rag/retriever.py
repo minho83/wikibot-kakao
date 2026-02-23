@@ -13,7 +13,9 @@ from qdrant_client.models import Filter, FieldCondition, MatchValue
 from loguru import logger
 from dotenv import load_dotenv
 
-load_dotenv()
+from utils.image_handler import ImageHandler
+
+load_dotenv(override=True)
 
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
@@ -56,13 +58,14 @@ class Retriever:
             )
 
         try:
-            results = self.qdrant.search(
+            response = self.qdrant.query_points(
                 collection_name=COLLECTION,
-                query_vector=vector,
+                query=vector,
                 query_filter=query_filter,
                 limit=BOOKMARK_TOP_K,
                 score_threshold=SCORE_THRESHOLD
             )
+            results = response.points
         except Exception as e:
             logger.error(f"Qdrant 검색 실패: {e}")
             return []
@@ -75,10 +78,10 @@ class Retriever:
 
         return bookmarks
 
-    def _load_original_content(self, content_path: str) -> str:
-        """책갈피의 content_path로 원본 JSON 로드 → content 반환"""
+    def _load_original_data(self, content_path: str) -> dict:
+        """책갈피의 content_path로 원본 JSON 로드 → 전체 dict 반환"""
         if not content_path:
-            return ""
+            return {}
 
         # Docker 환경에서 상대경로 처리
         if content_path.startswith("./"):
@@ -87,63 +90,103 @@ class Retriever:
 
         if not os.path.exists(filepath):
             logger.warning(f"원본 파일 없음: {filepath}")
-            return ""
+            return {}
 
         try:
             with open(filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return data.get("content", "")
+                return json.load(f)
         except Exception as e:
             logger.error(f"원본 로드 실패 {filepath}: {e}")
-            return ""
+            return {}
 
-    def _build_context(self, bookmarks: list[dict]) -> str:
-        """GPT에 전달할 컨텍스트 구성"""
+    def _build_context(self, bookmarks: list[dict]) -> dict:
+        """
+        GPT에 전달할 컨텍스트 구성.
+        반환: {"text": str, "images": list[dict]}
+        """
         context_parts = []
+        all_images = []
+        max_images_per_post = 3
+        max_total_images = int(os.getenv("IMAGE_MAX_FOR_ANSWER", "6"))
 
         for i, bm in enumerate(bookmarks, 1):
-            # 원본 전체 내용 로드 시도
-            original_content = self._load_original_content(bm.get("content_path", ""))
+            # 원본 전체 데이터 로드
+            original_data = self._load_original_data(bm.get("content_path", ""))
+            content = original_data.get("content", "") if original_data else ""
 
             # 원본 없으면 책갈피 summary로 대체
-            content = original_content if original_content else bm.get("summary", "")
+            if not content:
+                content = bm.get("summary", "")
 
             # 너무 긴 본문은 잘라서 전달 (GPT 토큰 제한)
             if len(content) > 3000:
                 content = content[:3000] + "..."
 
+            # 이미지 설명 텍스트 (책갈피에서)
+            image_desc = bm.get("image_descriptions", [])
+            desc_text = ""
+            if image_desc:
+                desc_text = "\n이미지 설명: " + " / ".join(image_desc)
+
             part = (
                 f"[게시글 {i}] {bm.get('board_name', '')} | {bm.get('date', '')}\n"
                 f"제목: {bm.get('title', '')}\n"
-                f"내용: {content}\n"
+                f"내용: {content}{desc_text}\n"
                 f"출처: {bm.get('url', '')}"
             )
             context_parts.append(part)
 
-        return "\n────────────\n".join(context_parts)
+            # 원본에서 이미지 수집 (총 개수 제한)
+            if original_data and len(all_images) < max_total_images:
+                post_images = original_data.get("images", [])
+                remaining = max_total_images - len(all_images)
+                all_images.extend(post_images[:min(max_images_per_post, remaining)])
 
-    def _generate_answer(self, question: str, context: str) -> str:
-        """GPT-4o-mini로 최종 답변 생성"""
+        return {
+            "text": "\n────────────\n".join(context_parts),
+            "images": all_images
+        }
+
+    def _generate_answer(self, question: str, context_text: str,
+                          images: list[dict] = None) -> str:
+        """GPT-4o-mini로 최종 답변 생성 (이미지 있으면 Vision API 사용)"""
         system = SYSTEM_PROMPT.format(max_length=MAX_ANSWER_LENGTH)
 
         user_prompt = f"""참고 게시글:
-{context}
+{context_text}
 
 ────────────
 사용자 질문: {question}"""
+
+        # 이미지 base64 변환
+        images_b64 = []
+        if images and ImageHandler.is_enabled():
+            images_b64 = ImageHandler.load_images_as_base64(images)
+
+        if images_b64:
+            user_content = ImageHandler.build_vision_messages(
+                user_prompt, images_b64,
+                detail=ImageHandler.IMAGE_VISION_DETAIL_ANSWER
+            )
+        else:
+            user_content = user_prompt
 
         try:
             response = self.openai.chat.completions.create(
                 model=LLM_MODEL,
                 messages=[
                     {"role": "system", "content": system},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_content}
                 ],
                 temperature=0.3,
                 max_tokens=500
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
+            # Vision 실패 시 텍스트만으로 재시도
+            if images_b64:
+                logger.warning(f"Vision 답변 생성 실패, 텍스트만으로 재시도: {e}")
+                return self._generate_answer(question, context_text, images=None)
             logger.error(f"GPT 답변 생성 실패: {e}")
             return "답변 생성 중 오류가 발생했습니다."
 
@@ -191,9 +234,9 @@ class Retriever:
                 "confidence": "not_found"
             }
 
-        # 2단계: 원본 내용 로드 + GPT 답변
+        # 2단계: 원본 내용 로드 + GPT 답변 (이미지 포함)
         context = self._build_context(bookmarks)
-        answer = self._generate_answer(question, context)
+        answer = self._generate_answer(question, context["text"], context["images"])
 
         sources = [
             {

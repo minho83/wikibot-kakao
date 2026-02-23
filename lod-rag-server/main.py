@@ -10,7 +10,7 @@ import sys
 from loguru import logger
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 
 def cmd_crawl_lod(args):
@@ -19,7 +19,7 @@ def cmd_crawl_lod(args):
 
     crawler = LodCrawler()
     stats = crawler.crawl_all(start_page=1, end_page=args.pages)
-    print(f"\n✅ LOD 크롤링 완료: 신규 {stats['new']}건, 스킵 {stats['skipped']}건")
+    print(f"\n[완료] LOD 크롤링: 신규 {stats['new']}건, 스킵 {stats['skipped']}건")
 
 
 def cmd_crawl_cafe(args):
@@ -34,12 +34,12 @@ def cmd_crawl_cafe(args):
                 stats = await crawler.crawl_new()
             else:
                 stats = await crawler.crawl_all_boards(pages_per_board=args.pages)
-            print(f"\n✅ 카페 크롤링 완료: 신규 {stats['new']}건, 스킵 {stats['skipped']}건")
+            print(f"\n[완료] 카페 크롤링: 신규 {stats['new']}건, 스킵 {stats['skipped']}건")
         except CookieExpiredException:
-            print("\n🚨 네이버 쿠키가 만료되었습니다!")
+            print("\n[오류] 네이버 쿠키가 만료되었습니다!")
             print("로컬 PC에서 save_cookies_local.py를 실행하세요.")
         except FileNotFoundError as e:
-            print(f"\n❌ {e}")
+            print(f"\n[오류] {e}")
 
     asyncio.run(run())
 
@@ -50,7 +50,7 @@ def cmd_create_bookmarks(args):
 
     creator = BookmarkCreator()
     stats = creator.create_all()
-    print(f"\n✅ 책갈피 생성 완료: {stats['created']}건 생성, {stats['failed']}건 실패 (총 {stats['total']}건)")
+    print(f"\n[완료] 책갈피 생성: {stats['created']}건 생성, {stats['failed']}건 실패 (총 {stats['total']}건)")
 
 
 def cmd_embed_all(args):
@@ -59,7 +59,7 @@ def cmd_embed_all(args):
 
     embedder = Embedder()
     stats = embedder.process_all()
-    print(f"\n✅ 임베딩 완료: {stats['saved']}건 저장, {stats['skipped']}건 스킵, {stats['failed']}건 실패")
+    print(f"\n[완료] 임베딩: {stats['saved']}건 저장, {stats['skipped']}건 스킵, {stats['failed']}건 실패")
 
 
 def cmd_search(args):
@@ -72,15 +72,15 @@ def cmd_search(args):
         source_filter=args.source
     )
 
-    print(f"\n🔍 검색: {args.query}")
-    print(f"📊 신뢰도: {result['confidence']}")
-    print(f"\n💬 답변:\n{result['answer']}")
+    print(f"\n[검색] {args.query}")
+    print(f"[신뢰도] {result['confidence']}")
+    print(f"\n[답변]\n{result['answer']}")
 
     if result["sources"]:
-        print("\n📋 출처:")
+        print("\n[출처]")
         for s in result["sources"]:
             print(f"  [{s['board_name']}] {s['title']} (score: {s['score']})")
-            print(f"  🔗 {s['url']}")
+            print(f"  -> {s['url']}")
 
 
 def cmd_stats(args):
@@ -96,21 +96,35 @@ def cmd_stats(args):
     cafe_count = len(glob.glob(os.path.join(cafe_path, "*.json")))
     bookmark_count = len(glob.glob(os.path.join(bookmark_path, "*.json")))
 
-    print(f"\n📊 데이터 현황:")
+    print(f"\n[데이터 현황]")
     print(f"  LOD 공홈 원본: {lod_count}건")
     print(f"  네이버 카페 원본: {cafe_count}건")
     print(f"  책갈피: {bookmark_count}건")
+
+    # 이미지 통계
+    lod_img_count = 0
+    cafe_img_count = 0
+    lod_img_dir = os.path.join(lod_path, "images")
+    cafe_img_dir = os.path.join(cafe_path, "images")
+    if os.path.isdir(lod_img_dir):
+        lod_img_count = len(os.listdir(lod_img_dir))
+    if os.path.isdir(cafe_img_dir):
+        cafe_img_count = len(os.listdir(cafe_img_dir))
+    if lod_img_count or cafe_img_count:
+        print(f"\n[이미지]")
+        print(f"  LOD 이미지 폴더: {lod_img_count}개 게시글")
+        print(f"  카페 이미지 폴더: {cafe_img_count}개 게시글")
 
     try:
         from rag.embedder import Embedder
         embedder = Embedder()
         qdrant_stats = embedder.get_stats()
-        print(f"\n📦 Qdrant:")
+        print(f"\n[Qdrant]")
         print(f"  전체 벡터: {qdrant_stats['total_bookmarks']}건")
         print(f"  LOD: {qdrant_stats['lod_nexon']}건")
         print(f"  카페: {qdrant_stats['naver_cafe']}건")
     except Exception as e:
-        print(f"\n⚠️ Qdrant 연결 실패: {e}")
+        print(f"\n[경고] Qdrant 연결 실패: {e}")
 
 
 def main():

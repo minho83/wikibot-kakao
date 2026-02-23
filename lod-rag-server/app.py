@@ -4,15 +4,20 @@ LOD RAG Server - FastAPI 메인 서버
 """
 
 import os
+import json
+import glob as glob_module
 from contextlib import asynccontextmanager
+from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, Header, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Header, BackgroundTasks, Query
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional
 from loguru import logger
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 from rag.retriever import Retriever
 from rag.bookmark_creator import BookmarkCreator
@@ -179,10 +184,24 @@ async def stats():
 
     qdrant_stats = embedder.get_stats() if embedder else {}
 
+    # 이미지 통계
+    lod_img_count = 0
+    cafe_img_count = 0
+    lod_img_dir = os.path.join(lod_path, "images")
+    cafe_img_dir = os.path.join(cafe_path, "images")
+    if os.path.isdir(lod_img_dir):
+        lod_img_count = len(os.listdir(lod_img_dir))
+    if os.path.isdir(cafe_img_dir):
+        cafe_img_count = len(os.listdir(cafe_img_dir))
+
     return {
         "raw_posts": {
             "lod_nexon": lod_count,
             "naver_cafe": cafe_count
+        },
+        "images": {
+            "lod_nexon": lod_img_count,
+            "naver_cafe": cafe_img_count
         },
         "bookmarks": bookmark_count,
         "qdrant": qdrant_stats
@@ -230,3 +249,246 @@ async def crawl(
 
     background_tasks.add_task(run_crawl)
     return {"message": "크롤링 작업 시작됨 (백그라운드 실행)"}
+
+
+# ─── 관리 페이지 ───
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page():
+    """관리 페이지 HTML 반환"""
+    html_path = os.path.join(os.path.dirname(__file__), "static", "admin.html")
+    if not os.path.exists(html_path):
+        raise HTTPException(status_code=404, detail="관리 페이지 파일 없음")
+    with open(html_path, "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
+
+
+@app.get("/admin/posts")
+async def admin_list_posts(
+    source: Optional[str] = Query(None, description="lod_nexon | naver_cafe"),
+    status: Optional[str] = Query(None, description="all | excluded | included | no_bookmark"),
+    search: Optional[str] = Query(None, description="제목 검색어"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=10, le=200),
+    x_admin_key: str = Header(None)
+):
+    """크롤링된 게시글 목록 조회"""
+    if x_admin_key != ADMIN_SECRET_KEY:
+        raise HTTPException(status_code=403, detail="인증 실패")
+
+    lod_path = os.getenv("DATA_LOD_PATH", "./data/lod_nexon")
+    cafe_path = os.getenv("DATA_CAFE_PATH", "./data/naver_cafe")
+    bookmark_path = os.getenv("DATA_BOOKMARK_PATH", "./data/bookmarks")
+
+    posts = []
+
+    # 소스별 파일 로드
+    paths = []
+    if source != "naver_cafe":
+        paths.extend(glob_module.glob(os.path.join(lod_path, "*.json")))
+    if source != "lod_nexon":
+        paths.extend(glob_module.glob(os.path.join(cafe_path, "*.json")))
+
+    for filepath in paths:
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            post_source = data.get("source", "")
+            post_id = data.get("id", "")
+            excluded = data.get("excluded", False)
+            bookmark_created = data.get("bookmark_created", False)
+
+            # 상태 필터
+            if status == "excluded" and not excluded:
+                continue
+            if status == "included" and excluded:
+                continue
+            if status == "no_bookmark" and bookmark_created:
+                continue
+
+            # 검색 필터
+            if search and search.lower() not in data.get("title", "").lower():
+                continue
+
+            # 이미지 개수
+            image_count = len(data.get("images", []))
+
+            # 책갈피 존재 확인
+            bm_id = f"{post_source}_{post_id}"
+            bm_path = os.path.join(bookmark_path, f"{bm_id}.json")
+            has_bookmark = os.path.exists(bm_path)
+
+            posts.append({
+                "id": post_id,
+                "source": post_source,
+                "title": data.get("title", ""),
+                "author": data.get("author", ""),
+                "date": data.get("date", ""),
+                "views": data.get("views", 0),
+                "board_name": data.get("board_name", ""),
+                "excluded": excluded,
+                "bookmark_created": bookmark_created,
+                "has_bookmark": has_bookmark,
+                "image_count": image_count,
+                "crawled_at": data.get("crawled_at", ""),
+                "url": data.get("url", ""),
+            })
+
+        except Exception as e:
+            logger.error(f"관리 목록 로드 실패 {filepath}: {e}")
+
+    # 날짜순 정렬 (최신순)
+    posts.sort(key=lambda x: x.get("crawled_at", ""), reverse=True)
+
+    # 페이지네이션
+    total = len(posts)
+    start = (page - 1) * per_page
+    end = start + per_page
+    paged_posts = posts[start:end]
+
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": (total + per_page - 1) // per_page,
+        "posts": paged_posts
+    }
+
+
+@app.get("/admin/posts/{source}/{post_id}")
+async def admin_get_post(
+    source: str, post_id: str,
+    x_admin_key: str = Header(None)
+):
+    """게시글 상세 조회"""
+    if x_admin_key != ADMIN_SECRET_KEY:
+        raise HTTPException(status_code=403, detail="인증 실패")
+
+    if source == "lod_nexon":
+        data_path = os.getenv("DATA_LOD_PATH", "./data/lod_nexon")
+    elif source == "naver_cafe":
+        data_path = os.getenv("DATA_CAFE_PATH", "./data/naver_cafe")
+    else:
+        raise HTTPException(status_code=400, detail="source: lod_nexon 또는 naver_cafe")
+
+    filepath = os.path.join(data_path, f"{post_id}.json")
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="게시글 없음")
+
+    with open(filepath, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    # 책갈피 정보
+    bookmark_path = os.getenv("DATA_BOOKMARK_PATH", "./data/bookmarks")
+    bm_id = f"{source}_{post_id}"
+    bm_filepath = os.path.join(bookmark_path, f"{bm_id}.json")
+    bookmark = None
+    if os.path.exists(bm_filepath):
+        with open(bm_filepath, "r", encoding="utf-8") as f:
+            bookmark = json.load(f)
+
+    return {
+        "post": data,
+        "bookmark": bookmark
+    }
+
+
+@app.post("/admin/posts/{source}/{post_id}/exclude")
+async def admin_exclude_post(
+    source: str, post_id: str,
+    x_admin_key: str = Header(None)
+):
+    """
+    게시글 제외 처리:
+    1. 원본 JSON에 excluded=True 설정
+    2. Qdrant에서 벡터 삭제
+    3. 책갈피 JSON 삭제
+    """
+    if x_admin_key != ADMIN_SECRET_KEY:
+        raise HTTPException(status_code=403, detail="인증 실패")
+
+    if source == "lod_nexon":
+        data_path = os.getenv("DATA_LOD_PATH", "./data/lod_nexon")
+    elif source == "naver_cafe":
+        data_path = os.getenv("DATA_CAFE_PATH", "./data/naver_cafe")
+    else:
+        raise HTTPException(status_code=400, detail="source: lod_nexon 또는 naver_cafe")
+
+    filepath = os.path.join(data_path, f"{post_id}.json")
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="게시글 없음")
+
+    # 1. 원본 JSON에 excluded 플래그 설정
+    with open(filepath, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    data["excluded"] = True
+    data["excluded_at"] = datetime.now().isoformat()
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    # 2. Qdrant에서 벡터 삭제
+    bookmark_id = f"{source}_{post_id}"
+    qdrant_deleted = False
+    if embedder:
+        qdrant_deleted = embedder.delete_by_bookmark_id(bookmark_id)
+
+    # 3. 책갈피 JSON 삭제
+    bookmark_path = os.getenv("DATA_BOOKMARK_PATH", "./data/bookmarks")
+    bm_filepath = os.path.join(bookmark_path, f"{bookmark_id}.json")
+    bookmark_deleted = False
+    if os.path.exists(bm_filepath):
+        os.remove(bm_filepath)
+        bookmark_deleted = True
+
+    logger.info(f"게시글 제외: {bookmark_id} (Qdrant: {qdrant_deleted}, 책갈피: {bookmark_deleted})")
+
+    return {
+        "success": True,
+        "post_id": post_id,
+        "source": source,
+        "qdrant_deleted": qdrant_deleted,
+        "bookmark_deleted": bookmark_deleted
+    }
+
+
+@app.post("/admin/posts/{source}/{post_id}/include")
+async def admin_include_post(
+    source: str, post_id: str,
+    x_admin_key: str = Header(None)
+):
+    """
+    게시글 제외 해제:
+    1. 원본 JSON에서 excluded 플래그 제거
+    2. bookmark_created를 False로 (다음 크롤링 사이클에서 재생성)
+    """
+    if x_admin_key != ADMIN_SECRET_KEY:
+        raise HTTPException(status_code=403, detail="인증 실패")
+
+    if source == "lod_nexon":
+        data_path = os.getenv("DATA_LOD_PATH", "./data/lod_nexon")
+    elif source == "naver_cafe":
+        data_path = os.getenv("DATA_CAFE_PATH", "./data/naver_cafe")
+    else:
+        raise HTTPException(status_code=400, detail="source: lod_nexon 또는 naver_cafe")
+
+    filepath = os.path.join(data_path, f"{post_id}.json")
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="게시글 없음")
+
+    with open(filepath, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    data["excluded"] = False
+    data.pop("excluded_at", None)
+    data["bookmark_created"] = False  # 다음 사이클에서 재생성 대상
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    logger.info(f"게시글 포함 복원: {source}_{post_id}")
+
+    return {
+        "success": True,
+        "post_id": post_id,
+        "source": source,
+        "message": "제외 해제됨. 다음 책갈피 생성 사이클에서 자동 처리됩니다."
+    }

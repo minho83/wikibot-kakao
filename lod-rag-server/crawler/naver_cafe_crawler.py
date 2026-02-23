@@ -14,7 +14,9 @@ from playwright.async_api import async_playwright, BrowserContext
 from loguru import logger
 from dotenv import load_dotenv
 
-load_dotenv()
+from utils.image_handler import ImageHandler
+
+load_dotenv(override=True)
 
 DATA_PATH = os.getenv("DATA_CAFE_PATH", "./data/naver_cafe")
 COOKIES_PATH = os.getenv("NAVER_COOKIES_PATH", "./naver_cookies.json")
@@ -23,6 +25,12 @@ DELAY_MAX = float(os.getenv("NAVER_DELAY_MAX", "5"))
 
 CAFE_ID = "13434008"
 BASE_URL = "https://cafe.naver.com/f-e"
+
+NAVER_IMAGE_HEADERS = {
+    "Referer": "https://cafe.naver.com/",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+}
 
 BOARDS = [
     {"menu_id": 12,  "name": "팁과 정보"},
@@ -63,16 +71,17 @@ class NaverCafeCrawler:
 
         context = await self._browser.new_context(storage_state=COOKIES_PATH)
 
-        # 로그인 상태 확인
+        # 로그인 상태 확인: 실제 카페 게시판 접근 가능 여부로 검증
         page = await context.new_page()
-        await page.goto("https://cafe.naver.com", wait_until="domcontentloaded", timeout=15000)
-        await asyncio.sleep(2)
+        test_url = f"{BASE_URL}/cafes/{CAFE_ID}/menus/{BOARDS[0]['menu_id']}?page=1"
+        await page.goto(test_url, wait_until="domcontentloaded", timeout=15000)
+        await asyncio.sleep(3)
 
-        # #gnb_login_button 존재 = 로그인 안됨 = 쿠키 만료
-        login_btn = await page.query_selector("#gnb_login_button")
+        # 게시글 링크가 있으면 로그인 성공
+        articles = await page.query_selector_all("a.article")
         await page.close()
 
-        if login_btn:
+        if not articles:
             await self._cleanup()
             raise CookieExpiredException("네이버 쿠키가 만료되었습니다.")
 
@@ -85,6 +94,81 @@ class NaverCafeCrawler:
             await self._browser.close()
         if self._playwright:
             await self._playwright.stop()
+
+    async def _extract_and_download_images(self, page, article_id: str) -> list[dict]:
+        """게시글 페이지에서 이미지 추출 + 다운로드"""
+        try:
+            # DOM에서 이미지 정보 일괄 추출
+            image_data = await page.evaluate("""
+                () => {
+                    const selectors = [
+                        '.se-image img',
+                        '.se-module-image img',
+                        '.se-viewer img',
+                        '#postViewArea img'
+                    ];
+                    const seen = new Set();
+                    const results = [];
+                    for (const sel of selectors) {
+                        for (const img of document.querySelectorAll(sel)) {
+                            const src = img.src || img.dataset.lazySrc || img.dataset.src || '';
+                            if (!src || seen.has(src)) continue;
+                            seen.add(src);
+                            results.push({
+                                url: src,
+                                alt: img.alt || '',
+                                width: img.naturalWidth || img.width || 0,
+                                height: img.naturalHeight || img.height || 0
+                            });
+                        }
+                    }
+                    return results;
+                }
+            """)
+
+            if not image_data:
+                return []
+
+            # 필터링
+            candidates = ImageHandler.filter_image_candidates(image_data)
+            if not candidates:
+                return []
+
+            # 저장 디렉토리
+            save_dir = os.path.join(DATA_PATH, "images", article_id)
+
+            downloaded = []
+            for idx, img in enumerate(candidates, 1):
+                url = img["url"]
+                # 확장자 추출
+                ext = url.split("?")[0].split(".")[-1].lower()
+                if ext not in ("jpg", "jpeg", "png", "gif", "webp"):
+                    ext = "jpg"
+                filename = f"img_{idx:03d}.{ext}"
+
+                # 1차: httpx 다운로드
+                result = await ImageHandler.download_image_httpx(
+                    url, save_dir, filename,
+                    headers=NAVER_IMAGE_HEADERS
+                )
+
+                # 2차: Playwright 폴백 (403 등)
+                if not result:
+                    result = await ImageHandler.download_image_playwright(
+                        page, url, save_dir, filename
+                    )
+
+                if result:
+                    downloaded.append(result)
+
+            if downloaded:
+                logger.info(f"게시글 {article_id}: 이미지 {len(downloaded)}장 다운로드")
+
+            return downloaded
+
+        except Exception as e:
+            logger.warning(f"게시글 {article_id} 이미지 추출 실패: {e}")
+            return []
 
     async def crawl_list(self, context: BrowserContext, menu_id: int, page_num: int) -> list[dict]:
         """게시글 목록 크롤링"""
@@ -147,13 +231,45 @@ class NaverCafeCrawler:
         page = await context.new_page()
 
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=15000)
-            await asyncio.sleep(2)  # 컨텐츠 로딩 대기
+            await page.goto(url, wait_until="networkidle", timeout=30000)
+            await asyncio.sleep(3)  # iframe 로딩 대기
 
-            # 본문 선택자 우선순위
-            content = ""
-            for selector in [".se-viewer", ".se-main-container", "#postViewArea"]:
+            # 본문 프레임 찾기 (네이버 카페는 iframe 안에 본문을 로드)
+            content_frame = None
+            content_selectors = [
+                ".ArticleContentBox", ".se-viewer", ".se-main-container",
+                "#postViewArea", ".article_viewer"
+            ]
+
+            # 메인 페이지에서 먼저 찾기
+            for selector in content_selectors:
                 el = await page.query_selector(selector)
+                if el:
+                    content_frame = page
+                    break
+
+            # 메인 페이지에 없으면 iframe에서 찾기
+            if not content_frame:
+                for frame in page.frames[1:]:
+                    for selector in content_selectors:
+                        try:
+                            el = await frame.query_selector(selector)
+                            if el:
+                                content_frame = frame
+                                break
+                        except Exception:
+                            continue
+                    if content_frame:
+                        break
+
+            if not content_frame:
+                logger.warning(f"게시글 {article_id}: 본문 프레임 없음")
+                return None
+
+            # 본문 추출
+            content = ""
+            for selector in content_selectors:
+                el = await content_frame.query_selector(selector)
                 if el:
                     content = await el.inner_text()
                     break
@@ -164,32 +280,45 @@ class NaverCafeCrawler:
 
             content = re.sub(r"\n{3,}", "\n\n", content).strip()
 
+            # 이미지 추출 및 다운로드 (content_frame 사용)
+            images = []
+            if ImageHandler.is_enabled():
+                images = await self._extract_and_download_images(content_frame, article_id)
+
             # 제목
             title = ""
-            title_el = await page.query_selector(".title_text, .article_header .title")
-            if title_el:
-                title = (await title_el.inner_text()).strip()
+            for sel in [".title_text", ".article_header .title", ".ArticleTitle"]:
+                title_el = await content_frame.query_selector(sel)
+                if title_el:
+                    title = (await title_el.inner_text()).strip()
+                    break
 
             # 작성자
             author = ""
-            author_el = await page.query_selector(".profile_info .nickname, .WriterInfo .nick")
-            if author_el:
-                author = (await author_el.inner_text()).strip()
+            for sel in [".profile_info .nickname", ".WriterInfo .nick", ".nickname"]:
+                author_el = await content_frame.query_selector(sel)
+                if author_el:
+                    author = (await author_el.inner_text()).strip()
+                    break
 
             # 날짜
             date = ""
-            date_el = await page.query_selector(".article_info .date, .WriterInfo .date")
-            if date_el:
-                date = (await date_el.inner_text()).strip()
+            for sel in [".article_info .date", ".WriterInfo .date", ".date"]:
+                date_el = await content_frame.query_selector(sel)
+                if date_el:
+                    date = (await date_el.inner_text()).strip()
+                    break
 
             # 조회수
             views = 0
-            views_el = await page.query_selector(".article_info .count, .WriterInfo .count")
-            if views_el:
-                views_text = await views_el.inner_text()
-                views_match = re.search(r"[\d,]+", views_text)
-                if views_match:
-                    views = int(views_match.group().replace(",", ""))
+            for sel in [".article_info .count", ".WriterInfo .count", ".count"]:
+                views_el = await content_frame.query_selector(sel)
+                if views_el:
+                    views_text = await views_el.inner_text()
+                    views_match = re.search(r"[\d,]+", views_text)
+                    if views_match:
+                        views = int(views_match.group().replace(",", ""))
+                    break
 
             post_data = {
                 "id": article_id,
@@ -199,6 +328,15 @@ class NaverCafeCrawler:
                 "date": date,
                 "views": views,
                 "content": content,
+                "images": [
+                    {
+                        "filename": img["filename"],
+                        "original_url": img["original_url"],
+                        "local_path": img["local_path"],
+                        "size_bytes": img["size_bytes"],
+                    }
+                    for img in images
+                ],
                 "url": url,
                 "source": "naver_cafe",
                 "board_name": board_name,
@@ -259,7 +397,10 @@ class NaverCafeCrawler:
         return stats
 
     async def crawl_new(self) -> dict:
-        """각 게시판 1페이지만 크롤링 (스케줄러용)"""
+        """
+        각 게시판 신규 게시글만 크롤링 (스케줄러용).
+        이미 크롤링된 게시글을 만나면 해당 게시판 크롤링 중단 → 불필요한 요청 최소화.
+        """
         total_new = 0
         total_skipped = 0
 
@@ -269,6 +410,13 @@ class NaverCafeCrawler:
             for board in BOARDS:
                 items = await self.crawl_list(context, board["menu_id"], 1)
                 for item in items:
+                    # 이미 크롤링된 게시글이면 이후 게시글도 이미 있으므로 중단
+                    filepath = os.path.join(DATA_PATH, f"{item['article_id']}.json")
+                    if os.path.exists(filepath):
+                        logger.debug(f"기존 게시글 도달: {item['article_id']} → 게시판 크롤링 중단")
+                        total_skipped += 1
+                        break
+
                     await self._delay()
                     result = await self.crawl_post(
                         context,
