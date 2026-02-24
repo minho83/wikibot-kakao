@@ -37,6 +37,7 @@ services:
       - "8100:8100"
     volumes:
       - ${DATA_DIR:-~/wikibot-data}/rag_data:/app/data
+      - ${DATA_DIR:-~/wikibot-data}/naver_cookies.json:/app/naver_cookies.json:ro
     env_file:
       - ./lod-rag-server/.env
     environment:
