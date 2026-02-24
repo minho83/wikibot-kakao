@@ -280,10 +280,10 @@ async def crawl_url(
     # ── 소스 판별 + ID 추출 ──
     if "cafe.naver.com" in host:
         source = "naver_cafe"
-        # /articles/{id} 또는 /f-e/{id}
+        # /articles/{id}, /f-e/{id}, /{카페이름}/{id} 등 다양한 형식 지원
         m = re.search(r"/articles/(\d+)", parsed.path)
         if not m:
-            m = re.search(r"/f-e/(\d+)(?:\?|$)", url)
+            m = re.search(r"/(\d+)(?:\?|$)", parsed.path)
         if not m:
             raise HTTPException(status_code=400, detail="카페 게시글 ID를 URL에서 찾을 수 없습니다")
         post_id = m.group(1)
