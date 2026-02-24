@@ -4,10 +4,12 @@ LOD RAG Server - FastAPI 메인 서버
 """
 
 import os
+import re
 import json
 import glob as glob_module
 from contextlib import asynccontextmanager
 from datetime import datetime
+from urllib.parse import urlparse, parse_qs
 
 from fastapi import FastAPI, HTTPException, Header, BackgroundTasks, Query
 from fastapi.staticfiles import StaticFiles
@@ -89,6 +91,9 @@ class AddRequest(BaseModel):
 class CrawlRequest(BaseModel):
     source: str = "all"  # "all" | "lod" | "cafe"
     pages: int = 5
+
+class CrawlUrlRequest(BaseModel):
+    url: str
 
 
 # ─── 엔드포인트 ───
@@ -254,6 +259,135 @@ async def crawl(
 
     background_tasks.add_task(run_crawl)
     return {"message": "크롤링 작업 시작됨 (백그라운드 실행)"}
+
+
+@app.post("/admin/crawl-url")
+async def crawl_url(
+    req: CrawlUrlRequest,
+    x_admin_key: str = Header(None)
+):
+    """URL로 단건 게시글 수동 크롤링 → 책갈피 → 임베딩"""
+    if x_admin_key != ADMIN_SECRET_KEY:
+        raise HTTPException(status_code=403, detail="인증 실패")
+
+    url = req.url.strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="URL을 입력해주세요")
+
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+
+    # ── 소스 판별 + ID 추출 ──
+    if "cafe.naver.com" in host:
+        source = "naver_cafe"
+        # /articles/{id} 또는 /f-e/{id}
+        m = re.search(r"/articles/(\d+)", parsed.path)
+        if not m:
+            m = re.search(r"/f-e/(\d+)(?:\?|$)", url)
+        if not m:
+            raise HTTPException(status_code=400, detail="카페 게시글 ID를 URL에서 찾을 수 없습니다")
+        post_id = m.group(1)
+
+        # menu_id 추출 시도
+        qs = parse_qs(parsed.query)
+        menu_id = int(qs.get("menuid", qs.get("menuId", [0]))[0])
+
+    elif "lod.nexon.com" in host:
+        source = "lod_nexon"
+        m = re.search(r"/Community/game/(\d+)", parsed.path)
+        if not m:
+            raise HTTPException(status_code=400, detail="LOD 게시글 ID를 URL에서 찾을 수 없습니다")
+        post_id = m.group(1)
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="지원하지 않는 URL입니다. 네이버 카페 또는 LOD 공홈 URL을 입력해주세요."
+        )
+
+    # ── 이미 수집된 게시글 확인 ──
+    if source == "lod_nexon":
+        data_path = os.getenv("DATA_LOD_PATH", "./data/lod_nexon")
+    else:
+        data_path = os.getenv("DATA_CAFE_PATH", "./data/naver_cafe")
+
+    filepath = os.path.join(data_path, f"{post_id}.json")
+    if os.path.exists(filepath):
+        # 이미 수집됨 → 책갈피/임베딩만 재처리
+        with open(filepath, "r", encoding="utf-8") as f:
+            raw_post = json.load(f)
+
+        bookmark_id = f"{source}_{post_id}"
+        bm_path = os.path.join(os.getenv("DATA_BOOKMARK_PATH", "./data/bookmarks"), f"{bookmark_id}.json")
+
+        if os.path.exists(bm_path):
+            return {
+                "success": True,
+                "message": "이미 수집 및 학습된 게시글입니다",
+                "post_id": post_id,
+                "title": raw_post.get("title", ""),
+                "source": source,
+                "already_exists": True
+            }
+
+        # 책갈피 미생성 → 생성 진행
+        creator = BookmarkCreator()
+        bookmark = creator.create_bookmark(raw_post)
+        if bookmark and embedder:
+            embedder.embed_and_save(bookmark)
+
+        return {
+            "success": True,
+            "message": "기존 게시글의 책갈피를 생성했습니다",
+            "post_id": post_id,
+            "title": raw_post.get("title", ""),
+            "source": source,
+            "bookmark_id": bookmark["bookmark_id"] if bookmark else None
+        }
+
+    # ── 크롤링 실행 ──
+    raw_post = None
+
+    if source == "lod_nexon":
+        crawler = LodCrawler()
+        raw_post = crawler.crawl_post(post_id, title="", url=url)
+
+    elif source == "naver_cafe":
+        try:
+            cafe_crawler = NaverCafeCrawler()
+            context = await cafe_crawler.load_session()
+            try:
+                raw_post = await cafe_crawler.crawl_post(
+                    context, article_id=post_id,
+                    menu_id=menu_id, board_name="수동수집"
+                )
+            finally:
+                await cafe_crawler._cleanup()
+        except CookieExpiredException:
+            raise HTTPException(status_code=500, detail="네이버 쿠키가 만료되었습니다. 쿠키를 갱신해주세요.")
+        except FileNotFoundError:
+            raise HTTPException(status_code=500, detail="네이버 쿠키 파일이 없습니다.")
+
+    if not raw_post:
+        raise HTTPException(status_code=500, detail="게시글 크롤링에 실패했습니다. URL을 확인해주세요.")
+
+    # ── 책갈피 생성 + 임베딩 ──
+    creator = BookmarkCreator()
+    bookmark = creator.create_bookmark(raw_post)
+    bookmark_id = None
+    if bookmark:
+        bookmark_id = bookmark["bookmark_id"]
+        if embedder:
+            embedder.embed_and_save(bookmark)
+
+    return {
+        "success": True,
+        "message": "크롤링 및 학습 완료",
+        "post_id": post_id,
+        "title": raw_post.get("title", ""),
+        "source": source,
+        "bookmark_id": bookmark_id
+    }
 
 
 # ─── 관리 페이지 ───

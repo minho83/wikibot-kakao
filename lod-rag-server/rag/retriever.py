@@ -269,7 +269,7 @@ class Retriever:
                 "date": bm.get("date", ""),
                 "score": round(bm.get("score", 0), 4)
             }
-            for bm in bookmarks
+            for bm in context_bms
         ]
 
         return {

@@ -17,6 +17,18 @@
         .auth-bar input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 300px; }
         .auth-bar button { padding: 8px 16px; background: #1a1a2e; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
 
+        /* 수동 크롤링 */
+        .crawl-box { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .crawl-box h3 { font-size: 14px; margin-bottom: 10px; color: #1a1a2e; }
+        .crawl-row { display: flex; gap: 8px; align-items: center; }
+        .crawl-row input { flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        .crawl-row button { padding: 8px 20px; background: #1565c0; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; }
+        .crawl-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .crawl-result { margin-top: 10px; font-size: 13px; padding: 8px 12px; border-radius: 4px; display: none; }
+        .crawl-result.success { display: block; background: #e8f5e9; color: #2e7d32; }
+        .crawl-result.error { display: block; background: #ffebee; color: #c62828; }
+        .crawl-result.loading { display: block; background: #e3f2fd; color: #1565c0; }
+
         /* 필터 */
         .filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
         .filters select, .filters input { padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
@@ -78,6 +90,15 @@
             <button onclick="loadPosts()">접속</button>
         </div>
 
+        <div class="crawl-box">
+            <h3>수동 크롤링</h3>
+            <div class="crawl-row">
+                <input type="text" id="crawlUrl" placeholder="게시글 URL 붙여넣기 (네이버 카페 또는 LOD 공홈)" onkeyup="if(event.key==='Enter')crawlUrl()" />
+                <button id="crawlBtn" onclick="crawlUrl()">크롤링</button>
+            </div>
+            <div class="crawl-result" id="crawlResult"></div>
+        </div>
+
         <div class="filters">
             <select id="filterSource">
                 <option value="">전체 소스</option>
@@ -129,6 +150,56 @@
     <script>
         let currentPage = 1;
         const perPage = 50;
+
+        async function crawlUrl() {
+            const urlInput = document.getElementById('crawlUrl');
+            const btn = document.getElementById('crawlBtn');
+            const result = document.getElementById('crawlResult');
+            const url = urlInput.value.trim();
+
+            if (!url) { urlInput.focus(); return; }
+            if (!getKey()) { alert('관리자 키를 먼저 입력하세요'); return; }
+
+            btn.disabled = true;
+            btn.textContent = '크롤링 중...';
+            result.className = 'crawl-result loading';
+            result.textContent = '게시글을 수집하고 있습니다... (카페는 10~20초 소요)';
+
+            try {
+                const resp = await fetch('/admin/crawl-url', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': getKey()
+                    },
+                    body: JSON.stringify({ url })
+                });
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    result.className = 'crawl-result error';
+                    result.textContent = data.detail || '크롤링 실패';
+                    return;
+                }
+
+                const src = data.source === 'lod_nexon' ? 'LOD' : '카페';
+                if (data.already_exists) {
+                    result.className = 'crawl-result success';
+                    result.textContent = `[${src}] "${data.title}" - 이미 수집된 게시글입니다`;
+                } else {
+                    result.className = 'crawl-result success';
+                    result.textContent = `[${src}] "${data.title}" - ${data.message}`;
+                    urlInput.value = '';
+                    loadPosts(1);
+                }
+            } catch (e) {
+                result.className = 'crawl-result error';
+                result.textContent = '요청 실패: ' + e.message;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '크롤링';
+            }
+        }
 
         function getKey() {
             return document.getElementById('adminKey').value;
