@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 from utils.image_handler import ImageHandler
 
-load_dotenv(override=True)
+load_dotenv()
 
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
@@ -36,7 +36,7 @@ SYSTEM_PROMPT = """당신은 어둠의전설 게임 전문 도우미입니다.
 class Retriever:
     def __init__(self):
         self.openai = OpenAI()
-        self.qdrant = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        self.qdrant = QdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
 
     def _get_embedding(self, text: str) -> list[float]:
         """질문 텍스트 임베딩"""

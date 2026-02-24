@@ -10,7 +10,7 @@ import sys
 from loguru import logger
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
+load_dotenv()
 
 
 def cmd_crawl_lod(args):

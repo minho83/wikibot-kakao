@@ -15,7 +15,7 @@ from qdrant_client.models import (
 from loguru import logger
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
+load_dotenv()
 
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
@@ -29,7 +29,7 @@ VECTOR_SIZE = 1536  # text-embedding-3-small 차원
 class Embedder:
     def __init__(self):
         self.openai = OpenAI()
-        self.qdrant = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        self.qdrant = QdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
         self._ensure_collection()
 
     def _ensure_collection(self):

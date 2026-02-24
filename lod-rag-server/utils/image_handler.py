@@ -14,7 +14,7 @@ import requests
 from loguru import logger
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
+load_dotenv()
 
 # ─── 설정값 ───
 IMAGE_ENABLED = os.getenv("IMAGE_ENABLED", "true").lower() == "true"

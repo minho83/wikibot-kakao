@@ -17,7 +17,7 @@ from typing import Optional
 from loguru import logger
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
+load_dotenv()
 
 from rag.retriever import Retriever
 from rag.bookmark_creator import BookmarkCreator
@@ -40,15 +40,20 @@ async def lifespan(app: FastAPI):
 
     logger.info("LOD RAG Server 시작 중...")
 
-    # Qdrant 연결 + 서비스 초기화
-    try:
-        retriever = Retriever()
-        embedder = Embedder()
-        logger.info("Qdrant 연결 완료")
-    except Exception as e:
-        logger.error(f"Qdrant 연결 실패: {e}")
-        retriever = None
-        embedder = None
+    # Qdrant 연결 + 서비스 초기화 (재시도 포함)
+    import asyncio
+    for attempt in range(5):
+        try:
+            retriever = Retriever()
+            embedder = Embedder()
+            logger.info("Qdrant 연결 완료")
+            break
+        except Exception as e:
+            logger.warning(f"Qdrant 연결 실패 (시도 {attempt + 1}/5): {e}")
+            retriever = None
+            embedder = None
+            if attempt < 4:
+                await asyncio.sleep(3)
 
     # 스케줄러 시작
     start_scheduler()

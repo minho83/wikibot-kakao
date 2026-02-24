@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 from utils.image_handler import ImageHandler
 
-load_dotenv(override=True)
+load_dotenv()
 
 DATA_PATH = os.getenv("DATA_CAFE_PATH", "./data/naver_cafe")
 COOKIES_PATH = os.getenv("NAVER_COOKIES_PATH", "./naver_cookies.json")

@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 from utils.image_handler import ImageHandler
 
-load_dotenv(override=True)
+load_dotenv()
 
 DATA_PATH = os.getenv("DATA_LOD_PATH", "./data/lod_nexon")
 DELAY_MIN = float(os.getenv("LOD_DELAY_MIN", "1"))

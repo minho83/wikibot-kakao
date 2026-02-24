@@ -8,7 +8,7 @@ import httpx
 from loguru import logger
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
+load_dotenv()
 
 IRIS_URL = os.getenv("IRIS_URL", "http://192.168.0.80:3000")
 NOTIFY_ROOM_ID = os.getenv("NOTIFY_ROOM_ID", "")
