@@ -22,8 +22,8 @@ QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 COLLECTION = os.getenv("QDRANT_COLLECTION", "lod_bookmarks")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
-BOOKMARK_TOP_K = int(os.getenv("BOOKMARK_TOP_K", "3"))
-SEARCH_CANDIDATES = int(os.getenv("SEARCH_CANDIDATES", "10"))
+BOOKMARK_TOP_K = int(os.getenv("BOOKMARK_TOP_K", "5"))
+SEARCH_CANDIDATES = int(os.getenv("SEARCH_CANDIDATES", "15"))
 MAX_ANSWER_LENGTH = int(os.getenv("MAX_ANSWER_LENGTH", "300"))
 SCORE_THRESHOLD = float(os.getenv("SCORE_THRESHOLD", "0.25"))
 KEYWORD_BOOST = float(os.getenv("KEYWORD_BOOST", "0.15"))
@@ -250,8 +250,8 @@ class Retriever:
                 "confidence": "not_found"
             }
 
-        # 2단계: 원본 내용 로드 + GPT 답변 (이미지 포함)
-        context = self._build_context(bookmarks)
+        # 2단계: 원본 내용 로드 + GPT 답변 (상위 3개만 컨텍스트로 사용)
+        context = self._build_context(bookmarks[:3])
         answer = self._generate_answer(question, context["text"], context["images"])
 
         sources = [
