@@ -4,6 +4,7 @@ const bodyParser = require('body-parser');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
 require('dotenv').config();
 
 const webhookController = require('./controllers/webhookController');
@@ -174,14 +175,18 @@ app.post('/ask', async (req, res) => {
   try {
     const { query, max_length } = req.body;
     if (!query) {
-      return res.status(400).json({ success: false, answer: '검색어를 입력해주세요.', sources: [] });
+      return res.status(400).json({ answer: '검색어를 입력해주세요.', sources: [], confidence: 'not_found' });
     }
 
-    const result = await searchRagService.search(query);
-    res.json(result);
+    // iris-bot용: lod-rag-server 원본 형식 그대로 전달 (answer, sources, confidence)
+    const response = await axios.post(`${process.env.RAG_SERVER_URL || 'http://localhost:8100'}/search`, {
+      query,
+    }, { timeout: 30000 });
+
+    res.json(response.data);
   } catch (error) {
     console.error('RAG search error:', error);
-    res.status(500).json({ success: false, answer: 'RAG 검색 중 오류가 발생했습니다.', sources: [] });
+    res.status(500).json({ answer: 'RAG 검색 중 오류가 발생했습니다.', sources: [], confidence: 'not_found' });
   }
 });
 
