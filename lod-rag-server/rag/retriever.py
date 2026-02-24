@@ -77,18 +77,26 @@ class Retriever:
             return []
 
         # 키워드 부스트: 제목/키워드에 검색어가 포함되면 점수 가산
+        # 띄어쓰기 변형도 함께 매칭 ("진정한 강자" ↔ "진정한강자")
         query_terms = question.lower().split()
+        joined = "".join(query_terms)
+        match_terms = list(query_terms)
+        if len(query_terms) > 1:
+            match_terms.append(joined)
+
         bookmarks = []
         for hit in results:
             payload = hit.payload
             score = hit.score
 
             title = payload.get("title", "").lower()
+            title_nospace = title.replace(" ", "")
             keywords = [k.lower() for k in payload.get("keywords", [])]
-            for term in query_terms:
-                if term in title:
+            keywords_nospace = [k.replace(" ", "") for k in keywords]
+            for term in match_terms:
+                if term in title or term in title_nospace:
                     score += KEYWORD_BOOST
-                if term in keywords:
+                if term in keywords or term in keywords_nospace:
                     score += KEYWORD_BOOST * 0.5
 
             payload["score"] = score
