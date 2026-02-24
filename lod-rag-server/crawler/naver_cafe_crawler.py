@@ -236,13 +236,13 @@ class NaverCafeCrawler:
 
             # 본문 프레임 찾기 (네이버 카페는 iframe 안에 본문을 로드)
             content_frame = None
-            content_selectors = [
-                ".ArticleContentBox", ".se-viewer", ".se-main-container",
-                "#postViewArea", ".article_viewer"
+            frame_selectors = [
+                ".se-main-container", ".se-viewer",
+                "#postViewArea", ".article_viewer", ".ArticleContentBox"
             ]
 
             # 메인 페이지에서 먼저 찾기
-            for selector in content_selectors:
+            for selector in frame_selectors:
                 el = await page.query_selector(selector)
                 if el:
                     content_frame = page
@@ -251,7 +251,7 @@ class NaverCafeCrawler:
             # 메인 페이지에 없으면 iframe에서 찾기
             if not content_frame:
                 for frame in page.frames[1:]:
-                    for selector in content_selectors:
+                    for selector in frame_selectors:
                         try:
                             el = await frame.query_selector(selector)
                             if el:
@@ -266,13 +266,29 @@ class NaverCafeCrawler:
                 logger.warning(f"게시글 {article_id}: 본문 프레임 없음")
                 return None
 
-            # 본문 추출
-            content = ""
-            for selector in content_selectors:
-                el = await content_frame.query_selector(selector)
-                if el:
-                    content = await el.inner_text()
-                    break
+            # 본문 추출 (본문 영역만 정확히 추출, 헤더/댓글 제외)
+            content = await content_frame.evaluate("""
+                () => {
+                    // 본문 전용 셀렉터 (구체적 → 일반적 순서)
+                    const bodySelectors = [
+                        '.se-main-container',
+                        '.se-viewer',
+                        '#postViewArea',
+                    ];
+                    for (const sel of bodySelectors) {
+                        const el = document.querySelector(sel);
+                        if (el && el.innerText.trim().length > 10) {
+                            return el.innerText.trim();
+                        }
+                    }
+                    // 폴백: article_viewer에서 댓글/푸터 제외
+                    const viewer = document.querySelector('.article_viewer');
+                    if (viewer) {
+                        return viewer.innerText.trim();
+                    }
+                    return '';
+                }
+            """)
 
             if not content or len(content.strip()) < 10:
                 logger.warning(f"게시글 {article_id}: 본문 추출 실패")
