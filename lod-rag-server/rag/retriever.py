@@ -24,15 +24,19 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 BOOKMARK_TOP_K = int(os.getenv("BOOKMARK_TOP_K", "5"))
 SEARCH_CANDIDATES = int(os.getenv("SEARCH_CANDIDATES", "15"))
-MAX_ANSWER_LENGTH = int(os.getenv("MAX_ANSWER_LENGTH", "300"))
+MAX_ANSWER_LENGTH = int(os.getenv("MAX_ANSWER_LENGTH", "500"))
 SCORE_THRESHOLD = float(os.getenv("SCORE_THRESHOLD", "0.25"))
 KEYWORD_BOOST = float(os.getenv("KEYWORD_BOOST", "0.15"))
 
 SYSTEM_PROMPT = """당신은 어둠의전설 게임 전문 도우미입니다.
-아래에 제공되는 게시글 내용을 꼼꼼히 읽고 사용자 질문에 답변해주세요.
-게시글에 없는 내용은 절대 추측하지 마세요.
-답변은 핵심만, {max_length}자 이내로 간결하게 작성하세요.
-게임 고유 용어(직업명, 스킬명, 아이템명 등)는 그대로 사용하세요."""
+
+## 규칙
+1. 아래 게시글들을 꼼꼼히 읽고, 사용자 질문과 **직접 관련된 내용만** 골라서 답변하세요.
+2. 질문과 관련 없는 게시글은 무시하세요.
+3. 게시글에 없는 내용은 절대 추측하지 마세요.
+4. 게임 고유 용어(직업명, 스킬명, 아이템명 등)는 그대로 사용하세요.
+5. 답변은 핵심만, {max_length}자 이내로 작성하세요.
+6. 숫자/스탯/수치 정보는 정확하게 전달하세요."""
 
 
 class Retriever:
@@ -250,8 +254,11 @@ class Retriever:
                 "confidence": "not_found"
             }
 
-        # 2단계: 원본 내용 로드 + GPT 답변 (상위 3개만 컨텍스트로 사용)
-        context = self._build_context(bookmarks[:3])
+        # 2단계: 관련성 높은 게시글만 GPT 컨텍스트로 사용
+        # 상위 3개 중 1위 대비 점수가 50% 이상인 것만 포함
+        top = bookmarks[0].get("score", 0)
+        context_bms = [bm for bm in bookmarks[:3] if bm.get("score", 0) >= top * 0.5]
+        context = self._build_context(context_bms)
         answer = self._generate_answer(question, context["text"], context["images"])
 
         sources = [
