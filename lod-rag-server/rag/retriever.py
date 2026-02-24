@@ -23,8 +23,10 @@ COLLECTION = os.getenv("QDRANT_COLLECTION", "lod_bookmarks")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 BOOKMARK_TOP_K = int(os.getenv("BOOKMARK_TOP_K", "3"))
+SEARCH_CANDIDATES = int(os.getenv("SEARCH_CANDIDATES", "10"))
 MAX_ANSWER_LENGTH = int(os.getenv("MAX_ANSWER_LENGTH", "300"))
-SCORE_THRESHOLD = float(os.getenv("SCORE_THRESHOLD", "0.35"))
+SCORE_THRESHOLD = float(os.getenv("SCORE_THRESHOLD", "0.25"))
+KEYWORD_BOOST = float(os.getenv("KEYWORD_BOOST", "0.15"))
 
 SYSTEM_PROMPT = """당신은 어둠의전설 게임 전문 도우미입니다.
 아래에 제공되는 게시글 내용을 꼼꼼히 읽고 사용자 질문에 답변해주세요.
@@ -47,7 +49,7 @@ class Retriever:
         return response.data[0].embedding
 
     def _search_bookmarks(self, question: str, source_filter: str = None) -> list[dict]:
-        """1단계: Qdrant에서 유사 책갈피 검색"""
+        """1단계: Qdrant에서 유사 책갈피 검색 + 키워드 부스트 재랭킹"""
         vector = self._get_embedding(question)
 
         # source 필터 (lod_nexon / naver_cafe / None=전체)
@@ -62,7 +64,7 @@ class Retriever:
                 collection_name=COLLECTION,
                 query=vector,
                 query_filter=query_filter,
-                limit=BOOKMARK_TOP_K,
+                limit=SEARCH_CANDIDATES,
                 score_threshold=SCORE_THRESHOLD
             )
             results = response.points
@@ -70,13 +72,27 @@ class Retriever:
             logger.error(f"Qdrant 검색 실패: {e}")
             return []
 
+        # 키워드 부스트: 제목/키워드에 검색어가 포함되면 점수 가산
+        query_terms = question.lower().split()
         bookmarks = []
         for hit in results:
             payload = hit.payload
-            payload["score"] = hit.score
+            score = hit.score
+
+            title = payload.get("title", "").lower()
+            keywords = [k.lower() for k in payload.get("keywords", [])]
+            for term in query_terms:
+                if term in title:
+                    score += KEYWORD_BOOST
+                if term in keywords:
+                    score += KEYWORD_BOOST * 0.5
+
+            payload["score"] = score
             bookmarks.append(payload)
 
-        return bookmarks
+        # 재랭킹 후 상위 TOP_K개만 반환
+        bookmarks.sort(key=lambda x: x["score"], reverse=True)
+        return bookmarks[:BOOKMARK_TOP_K]
 
     def _load_original_data(self, content_path: str) -> dict:
         """책갈피의 content_path로 원본 JSON 로드 → 전체 dict 반환"""
@@ -192,12 +208,12 @@ class Retriever:
 
     @staticmethod
     def _get_confidence(top_score: float) -> str:
-        """유사도 점수 → 신뢰도 등급"""
-        if top_score >= 0.55:
+        """유사도 점수 → 신뢰도 등급 (키워드 부스트 반영)"""
+        if top_score >= 0.50:
             return "high"
-        elif top_score >= 0.42:
+        elif top_score >= 0.38:
             return "medium"
-        elif top_score >= 0.35:
+        elif top_score >= 0.28:
             return "low"
         else:
             return "not_found"
