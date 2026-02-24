@@ -2,6 +2,7 @@ const express = require('express');
 const { MessageParser } = require('../utils/messageParser');
 const { CommunityService } = require('../services/communityService');
 const { NoticeService } = require('../services/noticeService');
+const { SearchRagService } = require('../services/searchRagService');
 const { ResponseFormatter } = require('../utils/responseFormatter');
 const featureToggles = require('../featureToggles');
 
@@ -9,6 +10,7 @@ const router = express.Router();
 const messageParser = new MessageParser();
 const communityService = new CommunityService();
 const noticeService = new NoticeService();
+const searchRagService = new SearchRagService();
 const responseFormatter = new ResponseFormatter();
 
 router.post('/kakao', async (req, res) => {
@@ -101,6 +103,33 @@ router.post('/kakao', async (req, res) => {
           }
         } catch (e) {
           result = { success: false, message: '업데이트 조회 중 오류가 발생했습니다.' };
+        }
+        break;
+      case '!검색':
+        if (!parsedMessage.query) {
+          result = { success: false, message: '검색어를 입력해주세요.\n예: !검색 성기사 스킬트리' };
+        } else {
+          try {
+            const ragResult = await searchRagService.search(parsedMessage.query);
+            if (ragResult.success) {
+              const d = ragResult.data;
+              let msg = d.content;
+              if (d.link) {
+                msg += `\n\n출처: ${d.link}`;
+              }
+              if (d.otherResults && d.otherResults.length > 0) {
+                msg += '\n\n-- 관련 게시글 --\n';
+                d.otherResults.forEach((r, idx) => {
+                  msg += `${idx + 1}. ${r.title}\n`;
+                });
+              }
+              result = { success: true, message: msg };
+            } else {
+              result = { success: false, message: ragResult.data?.content || '검색 결과가 없습니다.' };
+            }
+          } catch (e) {
+            result = { success: false, message: 'RAG 검색 중 오류가 발생했습니다.' };
+          }
         }
         break;
       case '!파티':
