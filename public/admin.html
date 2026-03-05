@@ -732,13 +732,14 @@
           <th>도가</th>
           <th>상태</th>
           <th>주최</th>
+          <th>보낸사람</th>
           <th>등록시각</th>
           <th>수정시각</th>
           <th>작업</th>
         </tr>
       </thead>
       <tbody id="tableBody">
-        <tr><td colspan="14" style="text-align:center; padding:40px; color:var(--text-dim);">불러오는 중...</td></tr>
+        <tr><td colspan="15" style="text-align:center; padding:40px; color:var(--text-dim);">불러오는 중...</td></tr>
       </tbody>
     </table>
   </div>
@@ -1001,7 +1002,7 @@ function renderTable() {
 
   if (filtered.length === 0) {
     document.getElementById('tableBody').innerHTML =
-      '<tr><td colspan="14" style="text-align:center;padding:40px;color:var(--text-dim);">데이터 없음</td></tr>';
+      '<tr><td colspan="15" style="text-align:center;padding:40px;color:var(--text-dim);">데이터 없음</td></tr>';
     return;
   }
 
@@ -1011,7 +1012,7 @@ function renderTable() {
       <td class="id-col">${p.id}</td>
       <td style="white-space:nowrap">${p.party_date || ''}</td>
       <td style="white-space:nowrap">${p.time_slot || ''}</td>
-      <td>${p.location || '<span style="color:var(--text-dim)">-</span>'}</td>
+      <td>${p.location || '<span style="color:var(--text-dim)">-</span>'}${p.party_name ? ' <span class="meta-text">'+p.party_name+'</span>' : ''}</td>
       <td>${renderSlots(p.warrior_slots, 'warrior')}</td>
       <td>${renderSlots(p.rogue_slots, 'rogue')}</td>
       <td>${renderSlots(p.mage_slots, 'mage')}</td>
@@ -1019,6 +1020,7 @@ function renderTable() {
       <td>${renderSlots(p.taoist_slots, 'taoist')}</td>
       <td>${p.is_complete ? '<span class="complete-badge">완비</span>' : '<span class="recruiting-badge">모집</span>'}</td>
       <td>${p.organizer || '<span class="meta-text">-</span>'}</td>
+      <td class="meta-text">${p.sender_name || '-'}</td>
       <td class="meta-text" style="white-space:nowrap">${formatTime(p.created_at)}</td>
       <td class="meta-text" style="white-space:nowrap">${formatTime(p.updated_at)}</td>
       <td>
@@ -1030,7 +1032,7 @@ function renderTable() {
     </tr>`;
 
     if (showRaw && p.raw_message) {
-      html += `<tr><td colspan="14" style="padding: 0 8px 8px 48px;">
+      html += `<tr><td colspan="15" style="padding: 0 8px 8px 48px;">
         <div class="raw-msg" onclick="this.classList.toggle('expanded')">${escapeHtml(p.raw_message)}</div>
       </td></tr>`;
     }

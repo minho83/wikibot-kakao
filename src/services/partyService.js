@@ -413,12 +413,9 @@ class PartyService {
     let location = null;
     let partyName = null;
     let requirements = {};
-    let isComplete = false;
 
-    // 완비 체크
-    if (/#완비/.test(rawMessage)) {
-      isComplete = true;
-    }
+    // #완비는 타임슬롯별로 개별 추적 (1부 #완비가 2부에 영향 주지 않도록)
+    let pendingComplete = false;
 
     // 헤더 영역 파싱: 날짜 줄 ~ 첫 타임슬롯 줄 이전
     let dateLineIdx = -1;
@@ -491,11 +488,17 @@ class PartyService {
 
     // 타임슬롯별로 파티 파싱
     let currentTimeSlot = null;
+    let currentIsComplete = false;
     let currentSlots = {
       warrior: [], rogue: [], mage: [], cleric: [], taoist: []
     };
 
     for (const line of lines) {
+      // #완비를 타임슬롯 감지 전에 체크 (같은 줄에 있을 수 있으므로)
+      if (/#완비/.test(line)) {
+        pendingComplete = true;
+      }
+
       // 시간대 감지
       const timeSlot = this.parseTimeSlot(line);
       if (timeSlot) {
@@ -512,7 +515,7 @@ class PartyService {
             cleric_slots: JSON.stringify(currentSlots.cleric),
             taoist_slots: JSON.stringify(currentSlots.taoist),
             requirements: JSON.stringify(requirements),
-            is_complete: isComplete ? 1 : 0,
+            is_complete: currentIsComplete ? 1 : 0,
             raw_message: rawMessage,
             organizer: organizer || senderInfo.name || '',
             sender_name: senderInfo.name || '',
@@ -520,7 +523,9 @@ class PartyService {
           });
         }
 
-        // 새 타임슬롯 시작
+        // 새 타임슬롯 시작: pending #완비를 이 섹션에 적용 후 리셋
+        currentIsComplete = pendingComplete;
+        pendingComplete = false;
         currentTimeSlot = timeSlot;
         currentSlots = { warrior: [], rogue: [], mage: [], cleric: [], taoist: [] };
         continue;
@@ -539,7 +544,7 @@ class PartyService {
       }
     }
 
-    // 마지막 타임슬롯 저장
+    // 마지막 타임슬롯 저장 (pendingComplete: 슬롯 뒤에 #완비가 올 수도 있으므로)
     if (currentTimeSlot && this._hasAnySlots(currentSlots)) {
       parties.push({
         party_date: partyDate,
@@ -552,7 +557,7 @@ class PartyService {
         cleric_slots: JSON.stringify(currentSlots.cleric),
         taoist_slots: JSON.stringify(currentSlots.taoist),
         requirements: JSON.stringify(requirements),
-        is_complete: isComplete ? 1 : 0,
+        is_complete: (currentIsComplete || pendingComplete) ? 1 : 0,
         raw_message: rawMessage,
         organizer: organizer || senderInfo.name || '',
         sender_name: senderInfo.name || '',
