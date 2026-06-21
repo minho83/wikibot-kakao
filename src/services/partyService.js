@@ -96,6 +96,18 @@ class PartyService {
       )
     `);
 
+    // 봇이 관측한 방 테이블 (미등록 방 자동발견용)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS seen_rooms (
+        room_id TEXT PRIMARY KEY,
+        sample_message TEXT,
+        sender_name TEXT,
+        seen_count INTEGER DEFAULT 0,
+        first_seen TEXT,
+        last_seen TEXT
+      )
+    `);
+
     // organizer 컬럼 마이그레이션 (기존 DB 호환)
     try {
       this.db.run(`ALTER TABLE party_posts ADD COLUMN organizer TEXT`);
@@ -170,6 +182,7 @@ class PartyService {
          VALUES (?, ?, ?, 1, ?)`,
         [roomId, roomName || '', collect ? 1 : 0, this._getKoreanDatetime()]
       );
+      this.forgetSeenRoom(roomId);
       this.saveDb();
       return true;
     } catch (e) {
@@ -204,6 +217,114 @@ class PartyService {
       }));
     }
     return [];
+  }
+
+  // ── 미등록 방 자동발견 / 수집 상태 ──────────────────────
+
+  /**
+   * 봇이 메시지를 본 방을 기록 (미등록 방 발견용)
+   * room-check 시 호출. 등록된 방은 호출 측에서 걸러서 미등록만 넘긴다.
+   */
+  recordSeenRoom(roomId, sampleMessage = '', senderName = '') {
+    if (!this.db || !roomId) return;
+    try {
+      const now = this._getKoreanDatetime();
+      const sample = (sampleMessage || '').slice(0, 200);
+      const existing = this.db.exec(
+        `SELECT seen_count FROM seen_rooms WHERE room_id = ?`, [roomId]
+      );
+      if (existing.length > 0 && existing[0].values.length > 0) {
+        this.db.run(
+          `UPDATE seen_rooms
+           SET sample_message = ?, sender_name = ?, seen_count = seen_count + 1, last_seen = ?
+           WHERE room_id = ?`,
+          [sample, senderName || '', now, roomId]
+        );
+      } else {
+        this.db.run(
+          `INSERT INTO seen_rooms (room_id, sample_message, sender_name, seen_count, first_seen, last_seen)
+           VALUES (?, ?, ?, 1, ?, ?)`,
+          [roomId, sample, senderName || '', now, now]
+        );
+      }
+    } catch (e) {
+      console.error('recordSeenRoom error:', e);
+    }
+  }
+
+  /**
+   * 등록되지 않은(party_rooms에 없는) 관측 방 목록 — 최근 활동 순
+   */
+  listUnregisteredRooms() {
+    if (!this.db) return [];
+    const result = this.db.exec(
+      `SELECT room_id, sample_message, sender_name, seen_count, first_seen, last_seen
+       FROM seen_rooms
+       WHERE room_id NOT IN (SELECT room_id FROM party_rooms)
+       ORDER BY last_seen DESC`
+    );
+    if (result.length > 0) {
+      return result[0].values.map(row => ({
+        room_id: row[0],
+        sample_message: row[1] || '',
+        sender_name: row[2] || '',
+        seen_count: row[3] || 0,
+        first_seen: row[4],
+        last_seen: row[5]
+      }));
+    }
+    return [];
+  }
+
+  /**
+   * 등록된 방을 seen_rooms에서 제거 (등록 직후 발견목록 정리)
+   */
+  forgetSeenRoom(roomId) {
+    if (!this.db || !roomId) return;
+    try {
+      this.db.run(`DELETE FROM seen_rooms WHERE room_id = ?`, [roomId]);
+    } catch (e) {
+      console.error('forgetSeenRoom error:', e);
+    }
+  }
+
+  /**
+   * 등록된 방별 수집 상태 — 누적 건수, 오늘 건수, 마지막 수집 시각
+   */
+  getRoomCollectionStats() {
+    if (!this.db) return [];
+    const rooms = this.listPartyRooms();
+    const today = this._formatDate(this._getKoreanDate());
+    return rooms.map(room => {
+      let postCount = 0, todayCount = 0, lastCollected = null;
+      try {
+        const agg = this.db.exec(
+          `SELECT COUNT(*), MAX(updated_at) FROM party_posts WHERE room_id = ?`,
+          [room.room_id]
+        );
+        if (agg.length > 0 && agg[0].values.length > 0) {
+          postCount = agg[0].values[0][0] || 0;
+          lastCollected = agg[0].values[0][1] || null;
+        }
+        const todayAgg = this.db.exec(
+          `SELECT COUNT(*) FROM party_posts WHERE room_id = ? AND party_date = ?`,
+          [room.room_id, today]
+        );
+        if (todayAgg.length > 0 && todayAgg[0].values.length > 0) {
+          todayCount = todayAgg[0].values[0][0] || 0;
+        }
+      } catch (e) {
+        console.error('getRoomCollectionStats error:', e);
+      }
+      return {
+        room_id: room.room_id,
+        room_name: room.room_name,
+        collect: room.collect,
+        post_count: postCount,
+        today_count: todayCount,
+        last_collected: lastCollected
+      };
+    });
   }
 
   // ── 날짜 파싱 ──────────────────────────────────────
@@ -1188,23 +1309,30 @@ class PartyService {
       const before = this.db.exec(`SELECT COUNT(*) FROM party_posts`);
       const beforeCount = before[0]?.values[0]?.[0] || 0;
 
+      let cutoff = null;
       if (deleteAll) {
         this.db.run(`DELETE FROM party_posts`);
       } else {
         const cutoffDate = this._getKoreanDate();
         cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
-        const cutoff = this._formatDate(cutoffDate);
+        cutoff = this._formatDate(cutoffDate);
         this.db.run(`DELETE FROM party_posts WHERE party_date < ?`, [cutoff]);
       }
 
       const after = this.db.exec(`SELECT COUNT(*) FROM party_posts`);
       const afterCount = after[0]?.values[0]?.[0] || 0;
+      const removed = beforeCount - afterCount;
 
       this.saveDb();
 
       return {
         success: true,
-        removed: beforeCount - afterCount,
+        // trade.db 정리와 동일한 필드 규약 (deleted/remaining/cutoffDate)
+        deleted: removed,
+        remaining: afterCount,
+        cutoffDate: deleteAll ? '전체' : cutoff,
+        // 하위호환
+        removed,
         kept: afterCount
       };
     } catch (e) {

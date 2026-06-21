@@ -568,8 +568,12 @@ app.post('/api/party/query', async (req, res) => {
 app.post('/api/party/room-check', async (req, res) => {
   try {
     if (!initialized) await initializeService();
-    const { room_id } = req.body;
+    const { room_id, msg, sender } = req.body;
     const room = partyService.getPartyRoom(room_id);
+    // 미등록 방이면 자동발견용으로 관측 기록 (등록 방은 수집상태로 따로 추적)
+    if (!room && room_id) {
+      partyService.recordSeenRoom(room_id, msg || '', sender || '');
+    }
     res.json({ success: true, room });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -828,6 +832,39 @@ app.get('/api/party/admin/list', adminAuth, async (req, res) => {
     res.json({ success: true, parties });
   } catch (error) {
     console.error('Party admin list error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 미등록 방 자동발견 목록 (봇이 관측했으나 party_rooms에 없는 방)
+app.get('/api/party/admin/seen-rooms', adminAuth, async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    res.json({ success: true, rooms: partyService.listUnregisteredRooms() });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 등록된 방별 수집 상태 (건수 / 오늘 / 마지막 수집 시각)
+app.get('/api/party/admin/room-stats', adminAuth, async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    res.json({ success: true, rooms: partyService.getRoomCollectionStats() });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 파싱 미리보기 (dry-run) — 저장하지 않고 파싱 결과만 반환
+app.post('/api/party/admin/preview', adminAuth, async (req, res) => {
+  try {
+    if (!initialized) await initializeService();
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ success: false, message: 'message required' });
+    const parties = partyService.parseMessage(message, {});
+    res.json({ success: true, parties });
+  } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -1226,7 +1263,7 @@ function startDbCleanupScheduler() {
         console.error(`[DbCleanup] trade.db 정리 오류:`, error.message);
       }
 
-      // 2. 오래된 파티 데이터 삭제 (7일 이전)
+      // 2. 오래된 파티 데이터 삭제 (2일 이전)
       try {
         const partyResult = partyService.cleanupOldParties(2);
         if (partyResult.success) {
@@ -1243,7 +1280,7 @@ function startDbCleanupScheduler() {
     }
   }, 60 * 1000);
 
-  console.log(`[DbCleanup] 매일 04:00 자동 정리 스케줄 등록 (거래 14일, 파티 7일)`);
+  console.log(`[DbCleanup] 매일 04:00 자동 정리 스케줄 등록 (거래 14일, 파티 2일)`);
 }
 
 app.listen(PORT, () => {

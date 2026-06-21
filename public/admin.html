@@ -644,12 +644,48 @@
     font-size: 13px;
   }
 
+  /* 방 관리 / 현황 / 미리보기 */
+  .sub-h { font-size: 13px; font-weight: 700; margin: 16px 0 8px; color: var(--text); }
+  .sub-h small { font-weight: 400; color: var(--text-dim); font-size: 11px; }
+  .room-add-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .room-add-form input, .room-add-form select {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 10px; font-size: 13px; color: var(--text);
+  }
+  .room-add-form input.rid { flex: 1; min-width: 200px; }
+  .room-row {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px;
+  }
+  .room-row .info { flex: 1; min-width: 0; }
+  .room-row .nm { font-size: 13px; font-weight: 600; }
+  .room-row .id { font-size: 11px; color: var(--text-dim); word-break: break-all; }
+  .room-row .meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .room-row .meta.stale { color: #e0a04a; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+  .badge.collect { background: rgba(80,200,120,.15); color: #57c98a; }
+  .badge.query { background: rgba(140,150,170,.15); color: var(--text-dim); }
+  .empty-hint { color: var(--text-dim); font-size: 12px; padding: 6px 2px; }
+  .preview-box { margin-bottom: 14px; border: 1px solid var(--border); border-radius: 8px; padding: 0 12px; }
+  .preview-box summary { cursor: pointer; padding: 10px 0; font-size: 13px; font-weight: 600; }
+  .preview-box textarea {
+    width: 100%; box-sizing: border-box; min-height: 110px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px; padding: 8px; color: var(--text);
+    font-family: inherit; font-size: 13px; resize: vertical;
+  }
+  #previewResult { font-size: 12px; margin: 10px 0; }
+  #previewResult .pv-party { border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin-bottom: 6px; }
+  #previewResult .pv-empty { color: #e0a04a; }
+  .stat-line { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; }
+  .stat-line .k { color: var(--text-dim); }
+
   @media (max-width: 768px) {
     .header { padding: 12px 16px; }
     .main { padding: 12px 16px; }
     .form-grid { grid-template-columns: 1fr; }
     .modal { padding: 16px; }
     .feature-list { grid-template-columns: 1fr 1fr; }
+    .room-add-form input.rid { min-width: 0; width: 100%; }
   }
 </style>
 </head>
@@ -694,8 +730,48 @@
   <!-- 봇 기능 토글: 방 별 설정 -->
   <div id="roomSections"></div>
 
+  <!-- 서버 현황 (party-rooms.html에서 통합) -->
+  <div class="feature-section">
+    <h2>&#x1F4CA; 서버 현황
+      <button class="btn btn-ghost btn-sm" style="float:right" onclick="loadServerStatus()">&#x21BB; 새로고침</button>
+    </h2>
+    <div id="serverStatus" style="color:var(--text-dim);font-size:13px;">불러오는 중...</div>
+  </div>
+
+  <!-- 파티방 관리 (추가/수집상태/미등록 발견 통합) -->
+  <div class="feature-section">
+    <h2>&#x1F3E0; 파티방 관리
+      <button class="btn btn-ghost btn-sm" style="float:right" onclick="loadRoomMgmt()">&#x21BB; 새로고침</button>
+    </h2>
+
+    <div class="room-add-form">
+      <input class="rid" id="newRoomId" inputmode="numeric" placeholder="방 ID (room_id) — 카톡에서 !방확인" spellcheck="false">
+      <input id="newRoomName" placeholder="방 이름(선택)" spellcheck="false">
+      <select id="newRoomMode">
+        <option value="collect">수집+조회</option>
+        <option value="query">조회만</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="addRoom()">&#x2795; 추가</button>
+    </div>
+
+    <div class="sub-h">등록된 방 <small>(수집 상태)</small></div>
+    <div id="registeredRooms"><div class="empty-hint">불러오는 중...</div></div>
+
+    <div class="sub-h">미등록 방 자동발견 <small>봇이 최근 메시지를 본, 아직 등록되지 않은 방</small></div>
+    <div id="unregisteredRooms"><div class="empty-hint">불러오는 중...</div></div>
+  </div>
+
   <!-- 파티 DB 관리 -->
   <div>
+  <details class="preview-box">
+    <summary>&#x1F52C; 파싱 미리보기 (dry-run) &mdash; 저장 없이 양식 파싱 결과만 확인</summary>
+    <textarea id="previewInput" placeholder="카톡 모집 양식을 붙여넣으세요&#10;예) 오늘 #20:00~22:00 나겔탑&#10;전사 [][]&#10;도적 []&#10;@주최자"></textarea>
+    <div style="margin:8px 0;">
+      <button class="btn btn-primary btn-sm" onclick="runPreview()">파싱 테스트</button>
+    </div>
+    <div id="previewResult"></div>
+  </details>
+
   <div class="stats-row" id="statsRow"></div>
 
   <div class="toolbar">
@@ -1391,6 +1467,210 @@ async function saveRoomName(roomId, name) {
   }
 }
 
+function escapeAttr(s) { return String(s).replace(/['\\]/g, '\\$&').replace(/"/g, '&quot;'); }
+
+// KST 'YYYY-MM-DD HH:MM:SS' → 상대시간
+function relKST(dtStr) {
+  if (!dtStr) return '없음';
+  const t = Date.parse(String(dtStr).replace(' ', 'T'));
+  if (isNaN(t)) return dtStr;
+  const nowStr = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' });
+  const now = Date.parse(nowStr.replace(' ', 'T'));
+  const min = Math.floor((now - t) / 60000);
+  if (min < 1) return '방금';
+  if (min < 60) return min + '분 전';
+  const h = Math.floor(min / 60);
+  if (h < 24) return h + '시간 전';
+  return Math.floor(h / 24) + '일 전';
+}
+function staleMinutes(dtStr) {
+  const t = Date.parse(String(dtStr || '').replace(' ', 'T'));
+  if (isNaN(t)) return Infinity;
+  const now = Date.parse(new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }).replace(' ', 'T'));
+  return Math.floor((now - t) / 60000);
+}
+
+// ── 서버 현황 ──
+function fmtUptime(s) {
+  s = Math.floor(s);
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return (d ? d + '일 ' : '') + h + '시간 ' + m + '분';
+}
+async function loadServerStatus() {
+  const box = document.getElementById('serverStatus');
+  try {
+    const r = await fetch('/api/db/stats', { headers: authHeaders() });
+    if (r.status === 401) { box.innerHTML = '<div class="empty-hint">인증 필요</div>'; return; }
+    const d = await r.json();
+    const disk = d.disk || {};
+    const pct = disk.used_percent || 0;
+    const party = d.databases?.['party.db'] || {};
+    box.innerHTML = `
+      <div class="stat-line"><span class="k">가동 시간</span><span>${fmtUptime(d.uptime || 0)}</span></div>
+      <div class="stat-line"><span class="k">디스크</span><span>${disk.used_gb||'?'} / ${disk.total_gb||'?'} GB (${pct}%)</span></div>
+      <div class="stat-line"><span class="k">파티 DB</span><span>${party.size_mb||'0'} MB · ${party.records ?? 0}건</span></div>
+      <div class="stat-line"><span class="k">메모리 (RSS)</span><span>${d.memory?.rss_mb||'?'} MB</span></div>
+      ${pct >= 90 ? '<div style="color:#e0604a;margin-top:8px;">⚠️ 디스크가 거의 찼습니다.</div>' : ''}`;
+  } catch (e) {
+    box.innerHTML = '<div class="empty-hint">현황을 불러오지 못했습니다: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+// ── 방 관리 (등록된 방 수집상태 + 미등록 발견) ──
+async function loadRoomMgmt() {
+  await Promise.all([loadRegisteredRooms(), loadUnregisteredRooms()]);
+}
+
+async function loadRegisteredRooms() {
+  const box = document.getElementById('registeredRooms');
+  try {
+    const r = await fetch('/api/party/admin/room-stats', { headers: authHeaders() });
+    const d = await r.json();
+    const rooms = d.rooms || [];
+    if (!rooms.length) { box.innerHTML = '<div class="empty-hint">등록된 방이 없습니다.</div>'; return; }
+    box.innerHTML = rooms.map(rm => {
+      const name = rm.room_name || '(이름 없음)';
+      const badge = rm.collect ? '<span class="badge collect">수집+조회</span>' : '<span class="badge query">조회만</span>';
+      const stale = rm.collect && staleMinutes(rm.last_collected) > 360;
+      const last = rm.last_collected ? relKST(rm.last_collected) : '수집 없음';
+      const meta = `누적 ${rm.post_count}건 · 오늘 ${rm.today_count}건 · 마지막 수집 ${last}`
+        + (stale ? ' ⚠️' : '');
+      return `<div class="room-row">
+        <div class="info">
+          <div class="nm">${escapeHtml(name)}</div>
+          <div class="id">${escapeHtml(rm.room_id)}</div>
+          <div class="meta${stale ? ' stale' : ''}">${escapeHtml(meta)}</div>
+        </div>
+        ${badge}
+        <button class="btn btn-ghost btn-sm" onclick="toggleCollect('${escapeAttr(rm.room_id)}','${escapeAttr(name)}',${rm.collect ? 'false' : 'true'})" title="수집/조회 전환">${rm.collect ? '조회만' : '수집ON'}</button>
+        <button class="btn btn-danger btn-sm" onclick="removeRoom('${escapeAttr(rm.room_id)}','${escapeAttr(name)}')">제거</button>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="empty-hint">불러오기 실패: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+async function loadUnregisteredRooms() {
+  const box = document.getElementById('unregisteredRooms');
+  try {
+    const r = await fetch('/api/party/admin/seen-rooms', { headers: authHeaders() });
+    const d = await r.json();
+    const rooms = d.rooms || [];
+    if (!rooms.length) { box.innerHTML = '<div class="empty-hint">발견된 미등록 방이 없습니다.</div>'; return; }
+    box.innerHTML = rooms.map(rm => {
+      const sample = rm.sample_message ? `"${rm.sample_message.slice(0, 40)}"` : '(샘플 없음)';
+      const meta = `${rm.sender_name ? escapeHtml(rm.sender_name) + ' · ' : ''}관측 ${rm.seen_count}회 · ${relKST(rm.last_seen)}`;
+      return `<div class="room-row">
+        <div class="info">
+          <div class="nm" style="color:var(--text-dim);font-weight:400;">${escapeHtml(sample)}</div>
+          <div class="id">${escapeHtml(rm.room_id)}</div>
+          <div class="meta">${meta}</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="prefillRoom('${escapeAttr(rm.room_id)}')">등록 &#x2192;</button>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="empty-hint">불러오기 실패: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+function prefillRoom(roomId) {
+  const input = document.getElementById('newRoomId');
+  input.value = roomId;
+  document.getElementById('newRoomName').focus();
+  input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function addRoom() {
+  const room_id = document.getElementById('newRoomId').value.trim();
+  const room_name = document.getElementById('newRoomName').value.trim();
+  const collect = document.getElementById('newRoomMode').value === 'collect';
+  if (!room_id) { showToast('방 ID를 입력하세요', true); return; }
+  try {
+    const r = await fetch('/api/party/rooms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ room_id, room_name, collect })
+    });
+    const d = await r.json();
+    if (d.success) {
+      showToast(d.message || '추가되었습니다');
+      document.getElementById('newRoomId').value = '';
+      document.getElementById('newRoomName').value = '';
+      loadRoomMgmt();
+      loadFeatures();
+    } else {
+      showToast(d.message || '추가 실패', true);
+    }
+  } catch (e) {
+    showToast('서버 오류', true);
+  }
+}
+
+async function toggleCollect(roomId, name, collect) {
+  try {
+    const r = await fetch('/api/party/rooms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ room_id: roomId, room_name: name === '(이름 없음)' ? '' : name, collect })
+    });
+    const d = await r.json();
+    if (d.success) { showToast(`${name}: ${collect ? '수집ON' : '조회만'}`); loadRegisteredRooms(); }
+    else showToast('변경 실패', true);
+  } catch (e) { showToast('서버 오류', true); }
+}
+
+async function removeRoom(roomId, name) {
+  if (!confirm(`'${name || roomId}' 방을 제거할까요?`)) return;
+  try {
+    const r = await fetch('/api/party/rooms/' + encodeURIComponent(roomId), {
+      method: 'DELETE', headers: authHeaders()
+    });
+    const d = await r.json();
+    if (d.success) { showToast('제거됨'); loadRoomMgmt(); loadFeatures(); }
+    else showToast(d.message || '제거 실패', true);
+  } catch (e) { showToast('서버 오류', true); }
+}
+
+// ── 파싱 미리보기 (dry-run) ──
+async function runPreview() {
+  const message = document.getElementById('previewInput').value;
+  const out = document.getElementById('previewResult');
+  if (!message.trim()) { out.innerHTML = '<div class="empty-hint">메시지를 입력하세요</div>'; return; }
+  try {
+    const r = await fetch('/api/party/admin/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ message })
+    });
+    const d = await r.json();
+    if (!d.success) { out.innerHTML = '<div class="pv-empty">파싱 실패: ' + escapeHtml(d.message || '') + '</div>'; return; }
+    const parties = d.parties || [];
+    if (!parties.length) {
+      out.innerHTML = '<div class="pv-empty">⚠️ 파싱된 파티 없음 — 날짜/시간대/직업 슬롯 양식을 확인하세요.</div>';
+      return;
+    }
+    out.innerHTML = parties.map(p => {
+      const slots = JOB_KEYS.map(j => {
+        const arr = (() => { try { return JSON.parse(p[j + '_slots'] || '[]'); } catch { return []; } })();
+        if (!arr.length) return '';
+        const empty = arr.filter(s => s === '').length;
+        return `<div>${JOB_NAMES[j]}: ${arr.map(s => s === '' ? '<span class="pv-empty">[빈]</span>' : '[' + escapeHtml(s) + ']').join(' ')}${empty ? ` <small>(빈 ${empty})</small>` : ''}</div>`;
+      }).filter(Boolean).join('');
+      return `<div class="pv-party">
+        <div><b>${escapeHtml(p.party_date || '날짜?')} ${escapeHtml(p.time_slot || '')}</b>
+          ${p.location ? '· ' + escapeHtml(p.location) : ''}
+          ${p.is_complete ? '· <span style="color:#57c98a">완비</span>' : ''}
+          ${p.organizer ? '· @' + escapeHtml(p.organizer) : ''}</div>
+        ${slots || '<div class="pv-empty">직업 슬롯 없음</div>'}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    out.innerHTML = '<div class="pv-empty">서버 오류: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
 // Init
 (async () => {
   try {
@@ -1398,6 +1678,8 @@ async function saveRoomName(roomId, name) {
     updateDateDisplay();
     loadParties();
     loadFeatures();
+    loadServerStatus();
+    loadRoomMgmt();
   } catch (e) {
     console.error('Auth failed:', e);
   }
