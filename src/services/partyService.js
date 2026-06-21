@@ -613,6 +613,8 @@ class PartyService {
     let currentSlots = {
       warrior: [], rogue: [], mage: [], cleric: [], taoist: []
     };
+    // 다중 날짜 모집글 지원: 중간에 새 날짜 줄이 나오면 다음 섹션부터 적용
+    let pendingDate = null;
 
     for (const line of lines) {
       // #완비를 타임슬롯 감지 전에 체크 (같은 줄에 있을 수 있으므로)
@@ -644,12 +646,25 @@ class PartyService {
           });
         }
 
+        // 섹션 전환 시 날짜 갱신: 대기 중 날짜 → 이 줄에 함께 있는 날짜 순
+        // (이전 섹션은 위에서 '이전 날짜'로 이미 저장됨)
+        if (pendingDate) { partyDate = pendingDate; pendingDate = null; }
+        const inlineDate = this.parseDate(line, this._getKoreanDate());
+        if (inlineDate) partyDate = inlineDate;
+
         // 새 타임슬롯 시작: pending #완비를 이 섹션에 적용 후 리셋
         currentIsComplete = pendingComplete;
         pendingComplete = false;
         currentTimeSlot = timeSlot;
         currentSlots = { warrior: [], rogue: [], mage: [], cleric: [], taoist: [] };
         continue;
+      }
+
+      // 타임슬롯이 아닌 '날짜만 있는 줄' 감지 → 다음 섹션 날짜로 대기
+      // (슬롯 [...] · #요구사항 줄은 제외해 오탐 방지)
+      if (!line.startsWith('#') && !line.includes('[')) {
+        const standaloneDate = this.parseDate(line, this._getKoreanDate());
+        if (standaloneDate) pendingDate = standaloneDate;
       }
 
       // 직업 슬롯 파싱 (같은 직업 하위 카테고리는 합침)
