@@ -25,7 +25,8 @@ function adminAuth(req, res, next) {
   // ADMIN_PASSWORD 미설정 시 인증 없이 통과
   if (!ADMIN_PASSWORD) return next();
   const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token || !adminTokens.has(token)) {
+  // 세션 토큰 또는 ADMIN_PASSWORD(서비스 토큰: 봇 등 내부 호출용) 허용
+  if (!token || (!adminTokens.has(token) && token !== ADMIN_PASSWORD)) {
     return res.status(401).json({ success: false, message: '인증이 필요합니다.' });
   }
   next();
@@ -576,7 +577,7 @@ app.post('/api/party/room-check', async (req, res) => {
 });
 
 // 파티방 추가
-app.post('/api/party/rooms', async (req, res) => {
+app.post('/api/party/rooms', adminAuth, async (req, res) => {
   try {
     if (!initialized) await initializeService();
     const { room_id, room_name, collect } = req.body;
@@ -590,7 +591,7 @@ app.post('/api/party/rooms', async (req, res) => {
 });
 
 // 파티방 제거
-app.delete('/api/party/rooms/:roomId', async (req, res) => {
+app.delete('/api/party/rooms/:roomId', adminAuth, async (req, res) => {
   try {
     if (!initialized) await initializeService();
     const result = partyService.removePartyRoom(req.params.roomId);
