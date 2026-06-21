@@ -51,6 +51,14 @@
   .rm { width: auto; margin: 0; padding: 7px 11px; font-size: .8rem; background: #3a2230; color: #f0a3a3; border: 1px solid #6b2e3f; }
   .rm:hover { background: #5a2436; }
   .empty { color: #6f7891; text-align: center; padding: 20px; font-size: .9rem; }
+  .stat-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #232c47; font-size: .9rem; }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-row .k { color: #9aa3ba; }
+  .stat-row .v { color: #e8ecf5; font-weight: 600; }
+  .meter { height: 10px; background: #0f1424; border: 1px solid #2f3a5e; border-radius: 6px; overflow: hidden; margin-top: 8px; }
+  .meter > span { display: block; height: 100%; background: #2e9e5b; transition: width .3s; }
+  .meter.warn > span { background: #c9a227; }
+  .meter.crit > span { background: #c0392b; }
   .toprow { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
   .refresh { width: auto; margin: 0; padding: 6px 12px; font-size: .8rem; background: transparent; border: 1px solid #2f3a5e; color: #9aa3ba; }
 </style>
@@ -73,6 +81,14 @@
       <button class="ghost" onclick="logout()">로그아웃</button>
     </div>
     <div class="msg" id="loginMsg"></div>
+  </div>
+
+  <div class="card" id="statusCard" style="display:none">
+    <div class="toprow">
+      <h2 style="margin:0">📊 서버 현황</h2>
+      <button class="refresh" onclick="loadStatus()">새로고침</button>
+    </div>
+    <div id="statusBody"><div class="empty">불러오는 중…</div></div>
   </div>
 
   <div class="card">
@@ -123,6 +139,36 @@ function showMsg(text, ok) {
 function renderAuth() {
   document.getElementById('loggedOut').style.display = token ? 'none' : 'block';
   document.getElementById('loggedIn').style.display = token ? 'block' : 'none';
+  document.getElementById('statusCard').style.display = token ? 'block' : 'none';
+  if (token) loadStatus();
+}
+
+function fmtUptime(s) {
+  s = Math.floor(s);
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return (d ? d + '일 ' : '') + h + '시간 ' + m + '분';
+}
+
+async function loadStatus() {
+  const box = document.getElementById('statusBody');
+  try {
+    const r = await fetch(API + '/api/db/stats', { headers: authHeaders(false) });
+    if (r.status === 401) { box.innerHTML = '<div class="empty">인증 필요</div>'; return; }
+    const d = await r.json();
+    const disk = d.disk || {};
+    const pct = disk.used_percent || 0;
+    const cls = pct >= 90 ? 'crit' : pct >= 75 ? 'warn' : '';
+    const party = d.databases?.['party.db'] || {};
+    box.innerHTML = `
+      <div class="stat-row"><span class="k">가동 시간</span><span class="v">${fmtUptime(d.uptime || 0)}</span></div>
+      <div class="stat-row"><span class="k">디스크 사용량</span><span class="v">${disk.used_gb||'?'} / ${disk.total_gb||'?'} GB (${pct}%)</span></div>
+      <div class="meter ${cls}"><span style="width:${pct}%"></span></div>
+      <div class="stat-row" style="margin-top:10px"><span class="k">파티 DB</span><span class="v">${party.size_mb||'0'} MB · ${party.records ?? 0}건</span></div>
+      <div class="stat-row"><span class="k">메모리 (RSS)</span><span class="v">${d.memory?.rss_mb||'?'} MB</span></div>
+      ${pct >= 90 ? '<div class="msg err" style="display:block;margin-top:10px">⚠️ 디스크가 거의 찼습니다. 정리가 필요합니다.</div>' : ''}`;
+  } catch (e) {
+    box.innerHTML = '<div class="empty">현황을 불러오지 못했습니다: ' + e.message + '</div>';
+  }
 }
 
 async function login() {
@@ -238,6 +284,7 @@ function escapeAttr(s) { return String(s).replace(/['\\]/g, '\\$&').replace(/"/g
 
 renderAuth();
 loadRooms();
+setInterval(() => { if (token) loadStatus(); }, 30000);
 </script>
 </body>
 </html>

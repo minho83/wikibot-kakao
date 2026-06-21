@@ -870,7 +870,7 @@ app.use('/api/nickname', nicknameController);
 app.use('/webhook', rateLimiter, webhookController);
 
 // ── DB 통계 API (대시보드용) ──────────────────────────────
-app.get('/api/db/stats', async (req, res) => {
+app.get('/api/db/stats', adminAuth, async (req, res) => {
   try {
     if (!initialized) await initializeService();
     const fs = require('fs');
@@ -910,10 +910,30 @@ app.get('/api/db/stats', async (req, res) => {
       stats['nickname.db'].rooms = nicknameRooms.length;
     } catch (e) { stats['nickname.db'].rooms = 0; }
 
+    // 디스크 용량 (서버가 멈추는 원인 = 디스크 full → 가시화)
+    let disk = null;
+    try {
+      const s = fs.statfsSync(path.join(__dirname, '..'));
+      const total = s.blocks * s.bsize;
+      const free = s.bavail * s.bsize;
+      const used = total - free;
+      disk = {
+        total_gb: (total / 1073741824).toFixed(1),
+        used_gb: (used / 1073741824).toFixed(1),
+        free_gb: (free / 1073741824).toFixed(1),
+        used_percent: total ? Math.round((used / total) * 100) : 0
+      };
+    } catch (e) { disk = { error: e.message }; }
+
+    // 메모리
+    const mem = process.memoryUsage();
+
     res.json({
       success: true,
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
+      disk,
+      memory: { rss_mb: (mem.rss / 1048576).toFixed(1), heap_mb: (mem.heapUsed / 1048576).toFixed(1) },
       databases: stats
     });
   } catch (error) {
@@ -1259,3 +1279,12 @@ function gracefulShutdown(signal) {
 }
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+// 예기치 못한 오류로 서버가 통째로 멈추는 것 방지 (디스크 full/SQLite 오류 등).
+// 로그만 남기고 프로세스는 유지 — 정말 치명적이면 Docker --restart=always 가 복구.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+});
