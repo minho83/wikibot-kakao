@@ -906,6 +906,21 @@ app.delete('/api/party/admin/:id', adminAuth, async (req, res) => {
 app.use('/api/nickname', nicknameController);
 app.use('/webhook', rateLimiter, webhookController);
 
+// ── 서비스 상태 API (host 수집기가 떨군 src/system-status.json 제공) ──
+app.get('/api/system/status', adminAuth, async (req, res) => {
+  try {
+    const fs = require('fs');
+    const p = path.join(__dirname, 'system-status.json');
+    if (!fs.existsSync(p)) {
+      return res.json({ success: true, status: null, message: '수집기 미실행 (wikibot-status.timer 확인)' });
+    }
+    const status = JSON.parse(fs.readFileSync(p, 'utf-8'));
+    res.json({ success: true, status });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 // ── DB 통계 API (대시보드용) ──────────────────────────────
 app.get('/api/db/stats', adminAuth, async (req, res) => {
   try {

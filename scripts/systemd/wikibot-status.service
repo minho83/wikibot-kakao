@@ -1,0 +1,7 @@
+[Unit]
+Description=wikibot 관리페이지 서비스 상태 수집 (docker/systemd/adb)
+
+[Service]
+Type=oneshot
+User=ubuntu
+ExecStart=/home/ubuntu/wikibot-kakao/scripts/collect-status.sh

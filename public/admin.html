@@ -678,6 +678,13 @@
   #previewResult .pv-empty { color: #e0a04a; }
   .stat-line { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; }
   .stat-line .k { color: var(--text-dim); }
+  .svc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; }
+  .svc-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+  .svc-item .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .svc-item .dot.up { background: #57c98a; box-shadow: 0 0 6px rgba(87,201,138,.6); }
+  .svc-item .dot.down { background: #e0604a; box-shadow: 0 0 6px rgba(224,96,74,.6); }
+  .svc-item .nm2 { font-size: 12px; font-weight: 600; }
+  .svc-item .dt { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   @media (max-width: 768px) {
     .header { padding: 12px 16px; }
@@ -729,6 +736,15 @@
 
   <!-- 봇 기능 토글: 방 별 설정 -->
   <div id="roomSections"></div>
+
+  <!-- 서비스 상태 (도커/시스템 헬스) -->
+  <div class="feature-section">
+    <h2>&#x1FA7A; 서비스 상태
+      <span id="sysStatusTime" style="font-size:11px;font-weight:400;color:var(--text-dim)"></span>
+      <button class="btn btn-ghost btn-sm" style="float:right" onclick="loadSystemStatus()">&#x21BB; 새로고침</button>
+    </h2>
+    <div id="systemStatus"><div class="empty-hint">불러오는 중...</div></div>
+  </div>
 
   <!-- 서버 현황 (party-rooms.html에서 통합) -->
   <div class="feature-section">
@@ -1490,6 +1506,35 @@ function staleMinutes(dtStr) {
   return Math.floor((now - t) / 60000);
 }
 
+// ── 서비스 상태 (도커/시스템 헬스) ──
+async function loadSystemStatus() {
+  const box = document.getElementById('systemStatus');
+  const timeEl = document.getElementById('sysStatusTime');
+  try {
+    const r = await fetch('/api/system/status', { headers: authHeaders() });
+    const d = await r.json();
+    if (!d.success) { box.innerHTML = '<div class="empty-hint">불러오기 실패</div>'; return; }
+    if (!d.status) { box.innerHTML = '<div class="empty-hint">' + escapeHtml(d.message || '데이터 없음') + '</div>'; timeEl.textContent = ''; return; }
+    const s = d.status;
+    const items = [];
+    (s.containers || []).forEach(c => items.push(c));
+    (s.services || []).forEach(c => items.push(c));
+    if (s.redroid_adb) items.push(s.redroid_adb);
+    box.innerHTML = '<div class="svc-grid">' + items.map(it => `
+      <div class="svc-item">
+        <span class="dot ${it.ok ? 'up' : 'down'}"></span>
+        <div style="flex:1;min-width:0">
+          <div class="nm2">${escapeHtml(it.name)}</div>
+          <div class="dt">${escapeHtml(it.detail || '')}</div>
+        </div>
+      </div>`).join('') + '</div>';
+    const stale = staleMinutes(s.collected_at);
+    timeEl.textContent = `· ${relKST(s.collected_at)} 수집${stale > 3 ? ' ⚠️ 갱신 지연' : ''}`;
+  } catch (e) {
+    box.innerHTML = '<div class="empty-hint">서버 오류: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
 // ── 서버 현황 ──
 function fmtUptime(s) {
   s = Math.floor(s);
@@ -1678,8 +1723,10 @@ async function runPreview() {
     updateDateDisplay();
     loadParties();
     loadFeatures();
+    loadSystemStatus();
     loadServerStatus();
     loadRoomMgmt();
+    setInterval(loadSystemStatus, 30000);
   } catch (e) {
     console.error('Auth failed:', e);
   }

@@ -91,3 +91,4 @@ lod-rag-server/**/__pycache__/
 
 # Claude Code
 .claude/
+src/system-status.json

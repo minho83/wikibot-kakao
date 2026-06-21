@@ -1,0 +1,10 @@
+[Unit]
+Description=wikibot 상태 수집 타이머 (60초 주기)
+
+[Timer]
+OnBootSec=20
+OnUnitActiveSec=60
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
