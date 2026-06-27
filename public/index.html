@@ -15,6 +15,17 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
+  /* 키보드 포커스 가시성 (접근성) */
+  a:focus-visible,
+  button:focus-visible,
+  select:focus-visible,
+  input:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
   :root {
     --bg: #0f1117;
     --card: #1a1d27;
@@ -42,6 +53,14 @@
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
+    min-height: 100dvh; /* 모바일 주소창 대응 */
+    touch-action: manipulation; /* 300ms 탭 지연 제거 */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* 데이터 숫자는 고정폭으로 (카운트다운/카운트 출렁임 방지) */
+  .date-display, .time-count, .refresh-bar, .card-updated {
+    font-variant-numeric: tabular-nums;
   }
 
   .header {
@@ -319,7 +338,6 @@
   .card-updated {
     font-size: 11px;
     color: var(--text-dim);
-    opacity: 0.6;
   }
 
   /* Vacancy summary */
@@ -425,7 +443,6 @@
   .copy-hint {
     font-size: 11px;
     color: var(--text-dim);
-    opacity: 0.6;
   }
 
   /* Template & search buttons */
@@ -794,6 +811,21 @@
 
     /* View tabs compact */
     .view-tab { font-size: 10px; padding: 3px 8px; }
+
+    /* 터치 타깃 최소 44px 보장 */
+    .date-nav button { min-width: 44px; min-height: 44px; }
+    .view-tab { min-height: 44px; }
+    .my-search-clear { min-width: 44px; min-height: 44px; }
+  }
+
+  /* 모션 최소화 선호 사용자 존중 */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 </style>
 </head>
@@ -818,9 +850,9 @@
     </div>
     <div class="header-center">
       <div class="date-nav">
-        <button onclick="changeDate(-1)" title="Previous day">&#9664;</button>
-        <div class="date-display" id="dateDisplay"></div>
-        <button onclick="changeDate(1)" title="Next day">&#9654;</button>
+        <button onclick="changeDate(-1)" title="이전 날짜" aria-label="이전 날짜">&#9664;</button>
+        <div class="date-display" id="dateDisplay" aria-live="polite"></div>
+        <button onclick="changeDate(1)" title="다음 날짜" aria-label="다음 날짜">&#9654;</button>
       </div>
     </div>
     <div class="header-actions">
@@ -841,9 +873,9 @@
     <select class="filter-select" id="timeFilter" onchange="setTimeFilter(this.value)"></select>
     <div class="filter-spacer"></div>
     <div class="my-search">
-      <input type="text" id="myNameInput" placeholder="캐릭터명" spellcheck="false">
+      <input type="text" id="myNameInput" placeholder="캐릭터명" spellcheck="false" aria-label="내 캐릭터명으로 파티 검색">
       <button class="my-search-btn" onclick="searchMyParty()">내파티 검색</button>
-      <button class="my-search-clear" id="mySearchClear" onclick="clearMySearch()">✕</button>
+      <button class="my-search-clear" id="mySearchClear" onclick="clearMySearch()" title="검색 초기화" aria-label="검색 초기화">✕</button>
     </div>
     <button class="template-btn" onclick="copyBlankTemplate(this)">📝 기본양식 복사</button>
   </div>
