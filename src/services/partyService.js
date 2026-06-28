@@ -133,6 +133,46 @@ class PartyService {
       this.saveDb();
       console.log('[PartyService] UTC→KST 마이그레이션 완료');
     }
+
+    // 깨진 날짜 보정 마이그레이션 (YY.MM.DD 파싱 버그로 month>12인 행 재파싱)
+    const fixDone = this.db.exec(`SELECT 1 FROM _migrations WHERE name = 'fix_bad_dates'`);
+    if (!fixDone.length || !fixDone[0].values.length) {
+      this._fixMalformedDates();
+      this.db.run(`INSERT INTO _migrations (name) VALUES ('fix_bad_dates')`);
+      this.saveDb();
+    }
+  }
+
+  /**
+   * party_date의 월(月)이 12 초과인 깨진 행을 raw_message 재파싱으로 보정
+   * (구버전 파서가 "26.06.28"을 26/06으로 오인해 "2026-26-06"으로 저장한 버그 복구)
+   */
+  _fixMalformedDates() {
+    try {
+      const res = this.db.exec(
+        `SELECT id, time_slot, raw_message FROM party_posts
+         WHERE CAST(substr(party_date, 6, 2) AS INTEGER) > 12`
+      );
+      if (!res.length || !res[0].values.length) return;
+
+      let fixed = 0;
+      for (const row of res[0].values) {
+        const [id, timeSlot, rawMessage] = row;
+        if (!rawMessage) continue;
+        // 같은 메시지를 새 파서로 재파싱 후 time_slot이 일치하는 파티의 날짜 사용
+        const reparsed = this.parseMessage(rawMessage, {});
+        const match = reparsed.find(p => p.time_slot === timeSlot && p.party_date);
+        if (match) {
+          this.db.run(`UPDATE party_posts SET party_date = ? WHERE id = ?`, [match.party_date, id]);
+          fixed++;
+        }
+      }
+      if (fixed > 0) {
+        console.log(`[PartyService] 깨진 날짜 보정 완료: ${fixed}건`);
+      }
+    } catch (e) {
+      console.error('[PartyService] _fixMalformedDates error:', e);
+    }
   }
 
   saveDb() {
@@ -351,8 +391,16 @@ class PartyService {
       return this._formatDate(tomorrow);
     }
 
+    // "26.06.28", "26.06.28(일)", "26/06/28" — YY.MM.DD 3자리 형식 (연도 명시)
+    // 2자리 형식보다 먼저 검사해야 함 (26.06.28을 26/06으로 오인 방지)
+    let match = text.match(/(\d{2})[\/\.](\d{1,2})[\/\.](\d{1,2})/);
+    if (match) {
+      const explicitYear = 2000 + parseInt(match[1]);
+      return this._resolveDate(parseInt(match[2]), parseInt(match[3]), today, explicitYear);
+    }
+
     // "12/28[일]", "12/28(일)", "12/28 일"
-    let match = text.match(/(\d{1,2})[\/\.](\d{1,2})\s*[\[(]?[일월화수목금토]?[\])]?/);
+    match = text.match(/(\d{1,2})[\/\.](\d{1,2})\s*[\[(]?[일월화수목금토]?[\])]?/);
     if (match) {
       return this._resolveDate(parseInt(match[1]), parseInt(match[2]), today);
     }
@@ -379,15 +427,16 @@ class PartyService {
     return `${y}-${m}-${d}`;
   }
 
-  _resolveDate(month, day, baseDate) {
-    // 연도 추정: 현재 연도 또는 다음 연도
-    let year = baseDate.getFullYear();
-    const candidate = new Date(year, month - 1, day);
+  _resolveDate(month, day, baseDate, explicitYear = null) {
+    // 연도가 명시된 경우(YY.MM.DD) 추정 없이 그대로 사용
+    let year = explicitYear !== null ? explicitYear : baseDate.getFullYear();
 
-    // 3개월 이상 과거면 다음 연도로
-    const monthDiff = (baseDate.getMonth() + 1) - month;
-    if (monthDiff > 3) {
-      year++;
+    if (explicitYear === null) {
+      // 3개월 이상 과거면 다음 연도로
+      const monthDiff = (baseDate.getMonth() + 1) - month;
+      if (monthDiff > 3) {
+        year++;
+      }
     }
 
     return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
